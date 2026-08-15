@@ -44,6 +44,8 @@ model User {
   name          String
   email         String   @unique
   passwordHash  String
+  phone         String?
+  address       String?
   role          Role     @default(USER)
   emailVerified Boolean  @default(false)
   createdAt     DateTime @default(now())
