@@ -8,8 +8,15 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  const allowedOrigins = [
+    process.env.WEB_APP_URL,
+    'https://iit.belayetsust.com',
+    'http://localhost:3000',
+    'http://192.168.0.150:3000',
+  ].filter((origin): origin is string => Boolean(origin));
+
   app.enableCors({
-    origin: [process.env.WEB_APP_URL ?? 'http://localhost:3000', 'http://192.168.0.150:3000'],
+    origin: [...new Set(allowedOrigins)],
     credentials: true,
   });
 
@@ -22,9 +29,12 @@ async function bootstrap() {
   );
 
   if (!process.env.VERCEL) {
-    app.useStaticAssets(join(process.cwd(), process.env.UPLOADS_DIR ?? 'uploads'), {
-      prefix: '/uploads/',
-    });
+    app.useStaticAssets(
+      join(process.cwd(), process.env.UPLOADS_DIR ?? 'uploads'),
+      {
+        prefix: '/uploads/',
+      },
+    );
   }
 
   app.setGlobalPrefix('api');
