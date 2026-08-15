@@ -143,6 +143,7 @@ model Blog {
   slug            String     @unique
   excerpt         String?
   content         String
+  featuredImage   String?
   metaTitle       String?
   metaDescription String?
   category        String?

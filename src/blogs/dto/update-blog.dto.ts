@@ -4,9 +4,13 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+
+const MAX_IMAGE_LENGTH = 8_000_000; // ~6MB decoded, comfortably under the 10mb body limit
 
 export class UpdateBlogDto {
   @IsOptional()
@@ -26,6 +30,14 @@ export class UpdateBlogDto {
   @IsString()
   @MinLength(1)
   content?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_IMAGE_LENGTH)
+  @Matches(/^$|^(data:image\/[a-z0-9+.-]+;base64,|https:\/\/)/i, {
+    message: 'featuredImage must be a data:image/... URI or an https:// URL',
+  })
+  featuredImage?: string;
 
   @IsOptional()
   @IsString()

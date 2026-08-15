@@ -15,8 +15,11 @@ let isReady = false;
 
 async function bootstrap() {
   if (isReady) return;
+  expressServer.use(express.json({ limit: '10mb' }));
+  expressServer.use(express.urlencoded({ limit: '10mb', extended: true }));
   app = await NestFactory.create(AppModule, new ExpressAdapter(expressServer), {
     logger: ['error', 'warn'],
+    bodyParser: false,
   });
   app.enableCors({
     origin: getAllowedOrigins(),

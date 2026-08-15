@@ -9,6 +9,9 @@ import { getAllowedOrigins } from './common/utils/cors';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  app.useBodyParser('json', { limit: '10mb' });
+  app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
+
   app.enableCors({
     origin: getAllowedOrigins(),
     credentials: true,
