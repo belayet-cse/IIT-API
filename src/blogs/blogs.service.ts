@@ -13,6 +13,7 @@ import {
 import { sanitizeContent } from '../common/utils/sanitize';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
+import { ReorderBlogsDto } from './dto/reorder-blogs.dto';
 
 @Injectable()
 export class BlogsService {
@@ -46,7 +47,11 @@ export class BlogsService {
     const [posts, total] = await Promise.all([
       this.prisma.blog.findMany({
         where,
-        orderBy: { publishedAt: 'desc' },
+        // Within a category, respect the writer's chosen display order;
+        // the unfiltered feed stays newest-first.
+        orderBy: query.category
+          ? { sequence: 'asc' }
+          : { publishedAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
         include: { author: { select: { name: true } } },
@@ -85,16 +90,25 @@ export class BlogsService {
 
   // ── Admin ───────────────────────────────────────────────────────────────
 
-  async adminList(query: { search?: string; status?: BlogStatus }) {
+  async adminList(query: {
+    search?: string;
+    status?: BlogStatus;
+    category?: string;
+  }) {
     const where: Prisma.BlogWhereInput = {};
     if (query.status) where.status = query.status;
+    if (query.category) where.category = query.category;
     if (query.search) {
       where.OR = [{ title: { contains: query.search, mode: 'insensitive' } }];
     }
 
     const posts = await this.prisma.blog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      // Filtering to a single category surfaces the writer's chosen
+      // sequence; otherwise show the most recently touched posts first.
+      orderBy: query.category
+        ? { sequence: 'asc' }
+        : { createdAt: 'desc' },
       include: { author: { select: { name: true } } },
     });
 
@@ -105,6 +119,7 @@ export class BlogsService {
       featuredImage: p.featuredImage,
       category: p.category,
       tags: p.tags,
+      sequence: p.sequence,
       status: p.status,
       views: p.views,
       readingTime: p.readingTime,
@@ -124,6 +139,7 @@ export class BlogsService {
     const slug = await this.uniqueSlug(dto.slug || dto.title);
     const status = dto.status ?? BlogStatus.DRAFT;
     const content = sanitizeContent(dto.content);
+    const sequence = dto.sequence ?? (await this.nextSequence(dto.category));
 
     return this.prisma.blog.create({
       data: {
@@ -136,6 +152,7 @@ export class BlogsService {
         metaDescription: dto.metaDescription,
         category: dto.category,
         tags: dto.tags ?? [],
+        sequence,
         status,
         price: dto.price ?? 0,
         readingTime: dto.readingTime ?? estimateReadingTime(content),
@@ -157,6 +174,14 @@ export class BlogsService {
     const becomingPublished =
       nextStatus === BlogStatus.PUBLISHED && existing.publishedAt === null;
     const content = dto.content ? sanitizeContent(dto.content) : undefined;
+    // Moving to a different category re-appends to the end of that
+    // category's order unless the caller set an explicit sequence.
+    const sequence =
+      dto.sequence !== undefined
+        ? dto.sequence
+        : dto.category !== undefined && dto.category !== existing.category
+          ? await this.nextSequence(dto.category)
+          : undefined;
 
     return this.prisma.blog.update({
       where: { id },
@@ -170,6 +195,7 @@ export class BlogsService {
         metaDescription: dto.metaDescription,
         category: dto.category,
         tags: dto.tags,
+        sequence,
         status: dto.status,
         price: dto.price,
         readingTime:
@@ -185,6 +211,18 @@ export class BlogsService {
     if (!existing) throw new NotFoundException('Blog post not found.');
     await this.prisma.blog.delete({ where: { id } });
     return { id };
+  }
+
+  async reorder(dto: ReorderBlogsDto) {
+    await Promise.all(
+      dto.orderedIds.map((id, index) =>
+        this.prisma.blog.update({
+          where: { id },
+          data: { sequence: index },
+        }),
+      ),
+    );
+    return this.adminList({ category: dto.category });
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
@@ -212,6 +250,15 @@ export class BlogsService {
     if (!candidate)
       throw new ConflictException('Could not generate a slug for this post.');
     return candidate;
+  }
+
+  private async nextSequence(category?: string | null): Promise<number> {
+    if (!category) return 0;
+    const last = await this.prisma.blog.findFirst({
+      where: { category },
+      orderBy: { sequence: 'desc' },
+    });
+    return (last?.sequence ?? -1) + 1;
   }
 
   private toPublicSummary(

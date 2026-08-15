@@ -150,6 +150,7 @@ model Blog {
   metaDescription String?
   category        String?
   tags            String[]   @default([])
+  sequence        Int        @default(0)
   status          BlogStatus @default(PUBLISHED)
   price           Int        @default(0)
   views           Int        @default(0)
@@ -162,6 +163,7 @@ model Blog {
 
   @@index([status])
   @@index([publishedAt])
+  @@index([category, sequence])
   @@map("blogs")
 }
 

@@ -13,6 +13,7 @@ import { BlogStatus, Role } from '@prisma/client';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
+import { ReorderBlogsDto } from './dto/reorder-blogs.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -48,8 +49,9 @@ export class BlogsController {
   adminList(
     @Query('search') search?: string,
     @Query('status') status?: BlogStatus,
+    @Query('category') category?: string,
   ) {
-    return this.blogsService.adminList({ search, status });
+    return this.blogsService.adminList({ search, status, category });
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -57,6 +59,13 @@ export class BlogsController {
   @Post('admin')
   create(@Body() dto: CreateBlogDto, @CurrentUser() user: AuthenticatedUser) {
     return this.blogsService.create(dto, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @Patch('admin/reorder')
+  reorder(@Body() dto: ReorderBlogsDto) {
+    return this.blogsService.reorder(dto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

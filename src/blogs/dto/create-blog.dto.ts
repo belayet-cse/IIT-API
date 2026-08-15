@@ -68,4 +68,9 @@ export class CreateBlogDto {
   @IsInt()
   @Min(1)
   readingTime?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sequence?: number;
 }
