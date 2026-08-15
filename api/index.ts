@@ -4,10 +4,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { AppModule } from '../src/app.module';
+import { getAllowedOrigins } from '../src/common/utils/cors';
 import type { Request, Response } from 'express';
 
 const expressServer = express();
-let app: ReturnType<typeof NestFactory.create> extends Promise<infer T> ? T : never;
+let app: ReturnType<typeof NestFactory.create> extends Promise<infer T>
+  ? T
+  : never;
 let isReady = false;
 
 async function bootstrap() {
@@ -16,7 +19,7 @@ async function bootstrap() {
     logger: ['error', 'warn'],
   });
   app.enableCors({
-    origin: [process.env.WEB_APP_URL ?? 'http://localhost:3000'],
+    origin: getAllowedOrigins(),
     credentials: true,
   });
   app.useGlobalPipes(
