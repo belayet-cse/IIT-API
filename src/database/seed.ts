@@ -2,8 +2,12 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as argon2 from 'argon2';
+import { blogsSeedData } from './seed-data/blogs';
+import { excerptFrom } from '../common/utils/slugify';
 
-const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL as string) });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(process.env.DATABASE_URL as string),
+});
 
 async function main() {
   const adminPasswordHash = await argon2.hash('Admin@1234');
@@ -84,6 +88,32 @@ async function main() {
     update: {},
     create: { id: 'default' },
   });
+
+  for (const post of blogsSeedData) {
+    await prisma.blog.upsert({
+      where: { slug: post.slug },
+      update: {
+        title: post.title,
+        category: post.category,
+        readingTime: post.readingTime,
+        publishedAt: new Date(post.publishedAt),
+        content: post.content,
+        excerpt: excerptFrom(post.content),
+      },
+      create: {
+        title: post.title,
+        slug: post.slug,
+        category: post.category,
+        readingTime: post.readingTime,
+        publishedAt: new Date(post.publishedAt),
+        content: post.content,
+        excerpt: excerptFrom(post.content),
+        status: 'PUBLISHED',
+        authorId: admin.id,
+      },
+    });
+  }
+  console.log(`Seeded ${blogsSeedData.length} blog posts`);
 }
 
 main()
