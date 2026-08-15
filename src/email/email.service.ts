@@ -64,4 +64,65 @@ export class EmailService {
       html,
     });
   }
+
+  async sendWelcomeCredentialsEmail(
+    to: string,
+    details: { tempPassword: string; roleLabel: string },
+  ): Promise<void> {
+    const loginUrl = `${process.env.WEB_APP_URL}/login`;
+    const html = `
+      <p>Your ${escapeHtml(details.roleLabel)} account is ready.</p>
+      <p><strong>Login email:</strong> ${escapeHtml(to)}</p>
+      <p><strong>Temporary password:</strong> ${escapeHtml(details.tempPassword)}</p>
+      <p>Sign in at <a href="${loginUrl}">${loginUrl}</a> — you'll be asked to set your own
+      password on first login.</p>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[dev email] Welcome credentials for ${to}: ${details.tempPassword}`);
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: `Welcome to IIT — your ${details.roleLabel} account is ready`,
+      html,
+    });
+  }
+
+  async sendResearcherApprovedEmail(to: string): Promise<void> {
+    const dashboardUrl = `${process.env.WEB_APP_URL}/researcher/dashboard`;
+    const html = `
+      <p>Your Researcher application has been approved. Your account now has Researcher access.</p>
+      <p>Visit your dashboard at <a href="${dashboardUrl}">${dashboardUrl}</a> to get started.</p>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[dev email] Researcher approval notice for ${to}`);
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: 'Your IIT Researcher application has been approved',
+      html,
+    });
+  }
+
+  async sendAlumniVerificationResultEmail(to: string, matched: boolean): Promise<void> {
+    const html = matched
+      ? `<p>Good news — your alumni status has been verified. You now have full alumni access, including directory listing, discussion forum, and member discounts.</p>`
+      : `<p>We reviewed our verified alumni records and couldn't find a match for your email address. Your account remains active as a General Member. If you believe this is an error, please contact us.</p>`;
+
+    if (!this.resend) {
+      this.logger.log(`[dev email] Alumni verification result for ${to}: matched=${matched}`);
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: matched ? 'Your IIT alumni status is verified' : 'Update on your IIT alumni verification',
+      html,
+    });
+  }
 }

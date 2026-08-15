@@ -12,7 +12,21 @@ datasource db {
 enum Role {
   ADMIN
   ALUMNI
-  USER
+  GENERAL
+  PREMIUM
+  RESEARCHER
+}
+
+enum MembershipTier {
+  BASIC
+  PRO
+  ELITE
+}
+
+enum AlumniVerificationStatus {
+  NONE
+  PENDING
+  VERIFIED
 }
 
 enum ApplicationStatus {
@@ -40,16 +54,20 @@ enum BlogStatus {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  passwordHash  String
-  phone         String?
-  address       String?
-  role          Role     @default(USER)
-  emailVerified Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                        String                    @id @default(uuid())
+  name                      String
+  email                     String                    @unique
+  passwordHash              String
+  phone                     String?
+  organization              String?
+  address                   String?
+  role                      Role                      @default(GENERAL)
+  emailVerified             Boolean                   @default(false)
+  mustChangePassword        Boolean                   @default(false)
+  alumniVerificationStatus  AlumniVerificationStatus  @default(NONE)
+  desiredMembershipTier     MembershipTier?
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
 
   alumniProfile       AlumniProfile?
   passwordResetTokens PasswordResetToken[]
@@ -94,6 +112,26 @@ model AlumniApplication {
 
   @@index([status])
   @@map("alumni_applications")
+}
+
+model ResearcherApplication {
+  id               String            @id @default(uuid())
+  name             String
+  email            String
+  organization     String
+  currentRole      String
+  certifications   String[]          @default([])
+  expertiseAreas   String[]          @default([])
+  bio              String
+  linkedinUrl      String?
+  status           ApplicationStatus @default(PENDING)
+  reviewNote       String?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  createdAt        DateTime          @default(now())
+
+  @@index([status])
+  @@map("researcher_applications")
 }
 
 model AlumniProfile {

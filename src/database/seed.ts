@@ -62,7 +62,7 @@ async function main() {
       name: 'Tasnim Rahman',
       email: 'pending@iit-test.com',
       passwordHash: pendingPasswordHash,
-      role: 'USER',
+      role: 'GENERAL',
       emailVerified: true,
     },
   });

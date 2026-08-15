@@ -1,4 +1,7 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { MembershipTier } from '@prisma/client';
+import { IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
+
+export type RegistrationType = 'GENERAL' | 'PREMIUM' | 'ALUMNI';
 
 export class RegisterDto {
   @IsString()
@@ -11,4 +14,19 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   password: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  organization?: string;
+
+  @IsIn(['GENERAL', 'PREMIUM', 'ALUMNI'])
+  registrationType: RegistrationType;
+
+  @ValidateIf((dto: RegisterDto) => dto.registrationType === 'PREMIUM')
+  @IsEnum(MembershipTier)
+  membershipTier?: MembershipTier;
 }

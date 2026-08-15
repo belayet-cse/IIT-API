@@ -40,6 +40,10 @@ export class AuthService {
     emailVerified: boolean;
     phone?: string | null;
     address?: string | null;
+    organization?: string | null;
+    mustChangePassword: boolean;
+    alumniVerificationStatus: string;
+    desiredMembershipTier?: string | null;
   }) {
     return {
       id: user.id,
@@ -49,6 +53,10 @@ export class AuthService {
       emailVerified: user.emailVerified,
       phone: user.phone ?? null,
       address: user.address ?? null,
+      organization: user.organization ?? null,
+      mustChangePassword: user.mustChangePassword,
+      alumniVerificationStatus: user.alumniVerificationStatus,
+      desiredMembershipTier: user.desiredMembershipTier ?? null,
     };
   }
 
@@ -61,8 +69,21 @@ export class AuthService {
     }
 
     const passwordHash = await argon2.hash(dto.password);
+    // Premium is only granted once payment succeeds (not built yet), so this
+    // account starts GENERAL either way — the chosen tier is remembered for
+    // when checkout goes live. Alumni starts GENERAL too, pending CSV match.
     const user = await this.prisma.user.create({
-      data: { name: dto.name, email: dto.email, passwordHash },
+      data: {
+        name: dto.name,
+        email: dto.email,
+        passwordHash,
+        phone: dto.phone,
+        organization: dto.organization,
+        desiredMembershipTier:
+          dto.registrationType === 'PREMIUM' ? dto.membershipTier : undefined,
+        alumniVerificationStatus:
+          dto.registrationType === 'ALUMNI' ? 'PENDING' : 'NONE',
+      },
     });
 
     return { accessToken: this.signToken(user), user: this.toSafeUser(user) };
@@ -98,7 +119,7 @@ export class AuthService {
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data: { name: dto.name, phone: dto.phone, address: dto.address },
+      data: { name: dto.name, phone: dto.phone, address: dto.address, organization: dto.organization },
     });
     return this.toSafeUser(user);
   }
@@ -114,7 +135,7 @@ export class AuthService {
     const passwordHash = await argon2.hash(dto.newPassword);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: false },
     });
     return { success: true };
   }
