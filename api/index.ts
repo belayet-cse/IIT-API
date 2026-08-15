@@ -1,26 +1,28 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { ExpressAdapter } from '@nestjs/platform-express';
+import {
+  ExpressAdapter,
+  NestExpressApplication,
+} from '@nestjs/platform-express';
 import express from 'express';
 import { AppModule } from '../src/app.module';
 import { getAllowedOrigins } from '../src/common/utils/cors';
 import type { Request, Response } from 'express';
 
 const expressServer = express();
-let app: ReturnType<typeof NestFactory.create> extends Promise<infer T>
-  ? T
-  : never;
+let app: NestExpressApplication;
 let isReady = false;
 
 async function bootstrap() {
   if (isReady) return;
-  expressServer.use(express.json({ limit: '10mb' }));
-  expressServer.use(express.urlencoded({ limit: '10mb', extended: true }));
-  app = await NestFactory.create(AppModule, new ExpressAdapter(expressServer), {
-    logger: ['error', 'warn'],
-    bodyParser: false,
-  });
+  app = await NestFactory.create<NestExpressApplication>(
+    AppModule,
+    new ExpressAdapter(expressServer),
+    { logger: ['error', 'warn'] },
+  );
+  app.useBodyParser('json', { limit: '10mb' });
+  app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
   app.enableCors({
     origin: getAllowedOrigins(),
     credentials: true,
