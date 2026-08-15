@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { AlumniModule } from './alumni/alumni.module';
 import { BlogsModule } from './blogs/blogs.module';
 import { AdminModule } from './admin/admin.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AdminModule } from './admin/admin.module';
     AlumniModule,
     BlogsModule,
     AdminModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

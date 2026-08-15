@@ -89,6 +89,16 @@ async function main() {
     create: { id: 'default' },
   });
 
+  const defaultCategories = ['UCP', 'DIGITAL TRADE', 'ISBP', 'URR 725'];
+  for (let i = 0; i < defaultCategories.length; i++) {
+    await prisma.category.upsert({
+      where: { name: defaultCategories[i] },
+      update: {},
+      create: { name: defaultCategories[i], sortOrder: i },
+    });
+  }
+  console.log(`Seeded ${defaultCategories.length} categories`);
+
   for (const post of blogsSeedData) {
     await prisma.blog.upsert({
       where: { slug: post.slug },

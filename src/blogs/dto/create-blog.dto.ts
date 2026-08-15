@@ -1,5 +1,6 @@
 import { BlogStatus } from '@prisma/client';
 import {
+  IsArray,
   IsEnum,
   IsInt,
   IsOptional,
@@ -48,6 +49,11 @@ export class CreateBlogDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @IsOptional()
   @IsEnum(BlogStatus)
