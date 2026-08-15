@@ -23,8 +23,11 @@ export class RegisterDto {
   @IsString()
   organization?: string;
 
+  // Optional with a GENERAL default so the pre-existing single-path
+  // registration form keeps working until it's updated to send this.
+  @IsOptional()
   @IsIn(['GENERAL', 'PREMIUM', 'ALUMNI'])
-  registrationType: RegistrationType;
+  registrationType?: RegistrationType;
 
   @ValidateIf((dto: RegisterDto) => dto.registrationType === 'PREMIUM')
   @IsEnum(MembershipTier)
