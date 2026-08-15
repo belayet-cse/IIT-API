@@ -9,6 +9,7 @@ import { BlogsModule } from './blogs/blogs.module';
 import { AdminModule } from './admin/admin.module';
 import { CategoriesModule } from './categories/categories.module';
 import { UsersModule } from './users/users.module';
+import { ContactModule } from './contact/contact.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module';
     AdminModule,
     CategoriesModule,
     UsersModule,
+    ContactModule,
   ],
   controllers: [AppController],
   providers: [AppService],
