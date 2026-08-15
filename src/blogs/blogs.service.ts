@@ -39,7 +39,11 @@ export class BlogsService {
     }
     if (query.category) where.category = query.category;
 
-    const [posts, total] = await this.prisma.$transaction([
+    // Plain Promise.all rather than $transaction: the two queries don't need
+    // atomicity, and interactive transactions are unreliable against pooled
+    // Postgres endpoints (e.g. PgBouncer/Neon), each needing its own held
+    // connection for the transaction's lifetime.
+    const [posts, total] = await Promise.all([
       this.prisma.blog.findMany({
         where,
         orderBy: { publishedAt: 'desc' },
