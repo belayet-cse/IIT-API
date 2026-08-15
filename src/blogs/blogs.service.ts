@@ -10,6 +10,7 @@ import {
   excerptFrom,
   slugify,
 } from '../common/utils/slugify';
+import { sanitizeContent } from '../common/utils/sanitize';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 
@@ -116,19 +117,20 @@ export class BlogsService {
   async create(dto: CreateBlogDto, authorId: string) {
     const slug = await this.uniqueSlug(dto.slug || dto.title);
     const status = dto.status ?? BlogStatus.DRAFT;
+    const content = sanitizeContent(dto.content);
 
     return this.prisma.blog.create({
       data: {
         title: dto.title,
         slug,
-        excerpt: dto.excerpt || excerptFrom(dto.content),
-        content: dto.content,
+        excerpt: dto.excerpt || excerptFrom(content),
+        content,
         metaTitle: dto.metaTitle,
         metaDescription: dto.metaDescription,
         category: dto.category,
         status,
         price: dto.price ?? 0,
-        readingTime: dto.readingTime ?? estimateReadingTime(dto.content),
+        readingTime: dto.readingTime ?? estimateReadingTime(content),
         publishedAt: status === BlogStatus.PUBLISHED ? new Date() : null,
         authorId,
       },
@@ -146,15 +148,15 @@ export class BlogsService {
     const nextStatus = dto.status ?? existing.status;
     const becomingPublished =
       nextStatus === BlogStatus.PUBLISHED && existing.publishedAt === null;
+    const content = dto.content ? sanitizeContent(dto.content) : undefined;
 
     return this.prisma.blog.update({
       where: { id },
       data: {
         title: dto.title,
         slug,
-        excerpt:
-          dto.excerpt || (dto.content ? excerptFrom(dto.content) : undefined),
-        content: dto.content,
+        excerpt: dto.excerpt || (content ? excerptFrom(content) : undefined),
+        content,
         metaTitle: dto.metaTitle,
         metaDescription: dto.metaDescription,
         category: dto.category,
@@ -162,7 +164,7 @@ export class BlogsService {
         price: dto.price,
         readingTime:
           dto.readingTime ??
-          (dto.content ? estimateReadingTime(dto.content) : undefined),
+          (content ? estimateReadingTime(content) : undefined),
         publishedAt: becomingPublished ? new Date() : undefined,
       },
     });
