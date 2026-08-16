@@ -1,4 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { IIT_LOGO_BASE64 } from './logo';
 
 const NAVY = rgb(10 / 255, 18 / 255, 41 / 255);
 const GOLD = rgb(201 / 255, 168 / 255, 76 / 255);
@@ -56,15 +57,20 @@ export async function generateCertificatePdf(
     borderWidth: 1,
   });
 
-  centerText(
-    page,
-    'INSTITUTE OF INTERNATIONAL TRADE',
-    helveticaBold,
-    14,
-    height - 100,
-    NAVY,
-    width,
-  );
+  // IIT logo, the same asset used on the web app's auth pages — embedded as
+  // a base64 constant rather than read from disk so it survives the build
+  // regardless of dist/ layout (this repo's api/ + src/ dual entrypoints
+  // make static-asset copy paths unreliable).
+  const logoImage = await doc.embedPng(Buffer.from(IIT_LOGO_BASE64, 'base64'));
+  const logoWidth = 140;
+  const logoHeight = logoWidth / (logoImage.width / logoImage.height);
+  page.drawImage(logoImage, {
+    x: (width - logoWidth) / 2,
+    y: height - 90,
+    width: logoWidth,
+    height: logoHeight,
+  });
+
   centerText(
     page,
     'Certificate of Completion',
@@ -126,6 +132,29 @@ export async function generateCertificatePdf(
     MUTED,
     width,
   );
+
+  // Signature block — the institute name rendered in an italic serif face
+  // stands in for a signature since no scanned signature image exists yet
+  // (swap in a real one via doc.embedPng() the same way the logo above is
+  // embedded, once one is available, without fabricating a named signatory).
+  const signatureCenterX = width / 2;
+  centerText(
+    page,
+    'Institute of International Trade',
+    timesItalic,
+    20,
+    148,
+    NAVY,
+    width,
+  );
+  page.drawLine({
+    start: { x: signatureCenterX - 90, y: 140 },
+    end: { x: signatureCenterX + 90, y: 140 },
+    thickness: 1,
+    color: MUTED,
+  });
+  centerText(page, 'Authorized Signatory', helveticaBold, 11, 124, NAVY, width);
+
   centerText(
     page,
     `Reference: ${data.referenceCode}`,
