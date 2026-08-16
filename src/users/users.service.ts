@@ -17,6 +17,9 @@ const ADMIN_USER_SELECT = {
   phone: true,
   role: true,
   emailVerified: true,
+  desiredMembershipTier: true,
+  membershipTier: true,
+  membershipExpiresAt: true,
   createdAt: true,
 } satisfies Prisma.UserSelect;
 

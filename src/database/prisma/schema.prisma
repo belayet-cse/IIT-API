@@ -53,6 +53,17 @@ enum BlogStatus {
   PUBLISHED
 }
 
+model MembershipPlan {
+  tier            MembershipTier @id
+  displayName     String
+  priceBdt        Int
+  priceUsd        Int
+  discountPercent Int            @default(0)
+  updatedAt       DateTime       @updatedAt
+
+  @@map("membership_plans")
+}
+
 model User {
   id                        String                    @id @default(uuid())
   name                      String
@@ -66,6 +77,8 @@ model User {
   mustChangePassword        Boolean                   @default(false)
   alumniVerificationStatus  AlumniVerificationStatus  @default(NONE)
   desiredMembershipTier     MembershipTier?
+  membershipTier            MembershipTier?
+  membershipExpiresAt       DateTime?
   createdAt                 DateTime                  @default(now())
   updatedAt                 DateTime                  @updatedAt
 

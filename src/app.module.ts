@@ -11,6 +11,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { UsersModule } from './users/users.module';
 import { ContactModule } from './contact/contact.module';
 import { ResearchersModule } from './researchers/researchers.module';
+import { MembershipModule } from './membership/membership.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ResearchersModule } from './researchers/researchers.module';
     UsersModule,
     ContactModule,
     ResearchersModule,
+    MembershipModule,
   ],
   controllers: [AppController],
   providers: [AppService],
