@@ -210,4 +210,25 @@ export class EmailService {
       html,
     });
   }
+
+  async sendPaperUnlockedEmail(
+    to: string,
+    paperTitle: string,
+    paperSlug: string,
+  ): Promise<void> {
+    const paperUrl = `${process.env.WEB_APP_URL}/research/${paperSlug}`;
+    const html = `<p>Your purchase of <strong>${escapeHtml(paperTitle)}</strong> has been confirmed. Read it now at
+      <a href="${paperUrl}">${paperUrl}</a>.</p>`;
+
+    if (!this.resend) {
+      this.logger.log(`[dev email] Paper unlocked for ${to}: ${paperTitle}`);
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: `You now have access to "${paperTitle}"`,
+      html,
+    });
+  }
 }

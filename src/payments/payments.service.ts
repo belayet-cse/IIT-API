@@ -29,6 +29,8 @@ export class PaymentsService {
   // reconciliation, entitlement grant) is already real and in production use.
   async initiateCheckout(userId: string, dto: CreateCheckoutDto) {
     if (dto.type === 'BLOG') return this.initiateBlogCheckout(userId, dto);
+    if (dto.type === 'RESEARCH')
+      return this.initiateResearchCheckout(userId, dto);
     return this.initiateMembershipCheckout(userId, dto);
   }
 
@@ -106,6 +108,46 @@ export class PaymentsService {
     };
   }
 
+  // REQ-081: a paper's own priceBdt/priceUsd is the checkout amount,
+  // discounted by the same Premium/Alumni engine used everywhere else.
+  private async initiateResearchCheckout(
+    userId: string,
+    dto: CreateCheckoutDto,
+  ) {
+    if (!dto.paperId) throw new BadRequestException('paperId is required.');
+    const paper = await this.prisma.researchPaper.findUnique({
+      where: { id: dto.paperId },
+    });
+    if (!paper) throw new NotFoundException('Research paper not found.');
+    if (paper.priceBdt === 0 && paper.priceUsd === 0) {
+      throw new BadRequestException('This paper is free — no checkout needed.');
+    }
+
+    const basePrice = dto.currency === 'BDT' ? paper.priceBdt : paper.priceUsd;
+    const { discountPercent, finalPrice } =
+      await this.membershipService.calculatePrice(userId, basePrice);
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        type: dto.type,
+        paperId: dto.paperId,
+        currency: dto.currency,
+        amount: basePrice,
+        discountPercent,
+        status: 'PENDING',
+      },
+    });
+
+    return {
+      payment,
+      checkoutUrl: null,
+      live: false,
+      finalPrice,
+      message: `${NOT_LIVE_MESSAGE} We'll unlock "${paper.title}" for you once it clears.`,
+    };
+  }
+
   async listPayments(status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED') {
     const payments = await this.prisma.payment.findMany({
       where: status ? { status } : undefined,
@@ -113,6 +155,7 @@ export class PaymentsService {
       include: {
         user: { select: { name: true, email: true } },
         blog: { select: { title: true } },
+        paper: { select: { title: true } },
       },
     });
 
@@ -123,6 +166,7 @@ export class PaymentsService {
       type: p.type,
       membershipTier: p.membershipTier,
       blogTitle: p.blog?.title ?? null,
+      paperTitle: p.paper?.title ?? null,
       currency: p.currency,
       amount: p.amount,
       discountPercent: p.discountPercent,
@@ -144,6 +188,8 @@ export class PaymentsService {
 
     if (payment.type === 'BLOG')
       return this.markBlogPaid(payment, adminUserId, dto);
+    if (payment.type === 'RESEARCH')
+      return this.markResearchPaid(payment, adminUserId, dto);
     return this.markMembershipPaid(payment, adminUserId, dto);
   }
 
@@ -213,6 +259,39 @@ export class PaymentsService {
       user.email,
       blog.title,
       blog.slug,
+    );
+    return { success: true };
+  }
+
+  private async markResearchPaid(
+    payment: { id: string; userId: string; paperId: string | null },
+    adminUserId: string,
+    dto: MarkPaidDto,
+  ) {
+    if (!payment.paperId)
+      throw new BadRequestException('Unsupported payment type.');
+
+    const [updated, paper, user] = await this.prisma.$transaction([
+      this.prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'SUCCESS',
+          gateway: 'MANUAL',
+          processedByUserId: adminUserId,
+          note: dto.note,
+        },
+      }),
+      this.prisma.researchPaper.findUniqueOrThrow({
+        where: { id: payment.paperId },
+      }),
+      this.prisma.user.findUniqueOrThrow({ where: { id: payment.userId } }),
+    ]);
+    void updated;
+
+    await this.emailService.sendPaperUnlockedEmail(
+      user.email,
+      paper.title,
+      paper.slug,
     );
     return { success: true };
   }

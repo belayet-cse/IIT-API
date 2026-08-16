@@ -14,6 +14,7 @@ import { ResearchersModule } from './researchers/researchers.module';
 import { MembershipModule } from './membership/membership.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ForumModule } from './forum/forum.module';
+import { ResearchModule } from './research/research.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ForumModule } from './forum/forum.module';
     MembershipModule,
     PaymentsModule,
     ForumModule,
+    ResearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

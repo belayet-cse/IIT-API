@@ -43,6 +43,7 @@ enum AlumniType {
 enum PaymentType {
   MEMBERSHIP
   BLOG
+  RESEARCH
 }
 
 enum PaymentCurrency {
@@ -95,6 +96,8 @@ model Payment {
   membershipTier    MembershipTier?
   blogId            String?
   blog              Blog?           @relation(fields: [blogId], references: [id], onDelete: SetNull)
+  paperId           String?
+  paper             ResearchPaper?  @relation(fields: [paperId], references: [id], onDelete: SetNull)
   currency          PaymentCurrency
   gateway           PaymentGateway?
   amount            Int
@@ -109,6 +112,7 @@ model Payment {
   @@index([userId])
   @@index([status])
   @@index([blogId])
+  @@index([paperId])
   @@map("payments")
 }
 
@@ -136,6 +140,7 @@ model User {
   payments            Payment[]
   forumThreads        ForumThread[]
   forumPosts          ForumPost[]
+  researchPapers      ResearchPaper[]
 
   @@map("users")
 }
@@ -317,4 +322,32 @@ model ForumPost {
 
   @@index([threadId])
   @@map("forum_posts")
+}
+
+model ResearchPaper {
+  id            String         @id @default(uuid())
+  title         String
+  slug          String         @unique
+  abstract      String
+  content       String
+  featuredImage String?
+  category      String?
+  tags          String[]       @default([])
+  status        BlogStatus     @default(DRAFT)
+  priceBdt      Int            @default(0)
+  priceUsd      Int            @default(0)
+  certification Certification?
+  readingTime   Int            @default(1)
+  views         Int            @default(0)
+  authorId      String
+  author        User           @relation(fields: [authorId], references: [id])
+  publishedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  payments Payment[]
+
+  @@index([status])
+  @@index([publishedAt])
+  @@map("research_papers")
 }

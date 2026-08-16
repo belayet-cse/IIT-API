@@ -13,6 +13,10 @@ export class CreateCheckoutDto {
   @IsString()
   blogId?: string;
 
+  @IsOptional()
+  @IsString()
+  paperId?: string;
+
   @IsEnum(PaymentCurrency)
   currency: PaymentCurrency;
 }
