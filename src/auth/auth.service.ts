@@ -44,6 +44,7 @@ export class AuthService {
     mustChangePassword: boolean;
     alumniVerificationStatus: string;
     desiredMembershipTier?: string | null;
+    membershipTier?: string | null;
   }) {
     return {
       id: user.id,
@@ -57,6 +58,7 @@ export class AuthService {
       mustChangePassword: user.mustChangePassword,
       alumniVerificationStatus: user.alumniVerificationStatus,
       desiredMembershipTier: user.desiredMembershipTier ?? null,
+      membershipTier: user.membershipTier ?? null,
     };
   }
 

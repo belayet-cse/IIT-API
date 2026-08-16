@@ -142,4 +142,21 @@ export class EmailService {
       html,
     });
   }
+
+  async sendMembershipActivatedEmail(to: string, tier: string, expiresAt: Date): Promise<void> {
+    const dateLabel = expiresAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const html = `<p>Your IIT Premium membership (${escapeHtml(tier)} tier) is now active and valid until
+      <strong>${dateLabel}</strong>. Thanks for joining!</p>`;
+
+    if (!this.resend) {
+      this.logger.log(`[dev email] Membership activated for ${to}: ${tier}, expires ${dateLabel}`);
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: 'Your IIT Premium membership is active',
+      html,
+    });
+  }
 }

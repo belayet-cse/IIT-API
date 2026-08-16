@@ -40,6 +40,28 @@ enum AlumniType {
   HONORARY
 }
 
+enum PaymentType {
+  MEMBERSHIP
+}
+
+enum PaymentCurrency {
+  BDT
+  USD
+}
+
+enum PaymentGateway {
+  SSLCOMMERZ
+  STRIPE
+  MANUAL
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
 enum Certification {
   CDCS
   CSDG
@@ -64,6 +86,28 @@ model MembershipPlan {
   @@map("membership_plans")
 }
 
+model Payment {
+  id                String          @id @default(uuid())
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              PaymentType
+  membershipTier    MembershipTier?
+  currency          PaymentCurrency
+  gateway           PaymentGateway?
+  amount            Int
+  discountPercent   Int             @default(0)
+  status            PaymentStatus   @default(PENDING)
+  gatewayReference  String?
+  note              String?
+  processedByUserId String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
 model User {
   id                        String                    @id @default(uuid())
   name                      String
@@ -85,6 +129,7 @@ model User {
   alumniProfile       AlumniProfile?
   passwordResetTokens PasswordResetToken[]
   blogs               Blog[]
+  payments            Payment[]
 
   @@map("users")
 }

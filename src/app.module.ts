@@ -12,6 +12,7 @@ import { UsersModule } from './users/users.module';
 import { ContactModule } from './contact/contact.module';
 import { ResearchersModule } from './researchers/researchers.module';
 import { MembershipModule } from './membership/membership.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MembershipModule } from './membership/membership.module';
     ContactModule,
     ResearchersModule,
     MembershipModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
