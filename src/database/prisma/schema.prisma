@@ -42,6 +42,7 @@ enum AlumniType {
 
 enum PaymentType {
   MEMBERSHIP
+  BLOG
 }
 
 enum PaymentCurrency {
@@ -92,6 +93,8 @@ model Payment {
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   type              PaymentType
   membershipTier    MembershipTier?
+  blogId            String?
+  blog              Blog?           @relation(fields: [blogId], references: [id], onDelete: SetNull)
   currency          PaymentCurrency
   gateway           PaymentGateway?
   amount            Int
@@ -105,6 +108,7 @@ model Payment {
 
   @@index([userId])
   @@index([status])
+  @@index([blogId])
   @@map("payments")
 }
 
@@ -248,7 +252,8 @@ model Blog {
   tags            String[]   @default([])
   sequence        Int        @default(0)
   status          BlogStatus @default(PUBLISHED)
-  price           Int        @default(0)
+  priceBdt        Int        @default(0)
+  priceUsd        Int        @default(0)
   views           Int        @default(0)
   readingTime     Int        @default(1)
   authorId        String
@@ -256,6 +261,8 @@ model Blog {
   publishedAt     DateTime?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+
+  payments Payment[]
 
   @@index([status])
   @@index([publishedAt])

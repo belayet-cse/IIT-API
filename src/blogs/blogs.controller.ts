@@ -15,6 +15,7 @@ import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 import { ReorderBlogsDto } from './dto/reorder-blogs.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -91,8 +92,12 @@ export class BlogsController {
 
   // ── Public: single post (kept last — most generic :slug route) ─────────
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get(':slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.blogsService.findBySlug(slug);
+  findBySlug(
+    @Param('slug') slug: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.blogsService.findBySlug(slug, user);
   }
 }

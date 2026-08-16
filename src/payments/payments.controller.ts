@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { PaymentStatus, Role } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
@@ -24,7 +34,10 @@ export class PaymentsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('checkout')
-  checkout(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCheckoutDto) {
+  checkout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateCheckoutDto,
+  ) {
     return this.paymentsService.initiateCheckout(user.userId, dto);
   }
 
@@ -40,7 +53,11 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   @Patch('admin/:id/mark-paid')
-  markPaid(@Param('id') id: string, @Body() dto: MarkPaidDto, @CurrentUser() user: AuthenticatedUser) {
+  markPaid(
+    @Param('id') id: string,
+    @Body() dto: MarkPaidDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.paymentsService.markPaid(id, user.userId, dto);
   }
 }

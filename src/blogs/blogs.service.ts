@@ -3,8 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { BlogStatus, Prisma } from '@prisma/client';
+import { BlogStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { MembershipService } from '../membership/membership.service';
 import {
   estimateReadingTime,
   excerptFrom,
@@ -14,10 +15,14 @@ import { sanitizeContent } from '../common/utils/sanitize';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 import { ReorderBlogsDto } from './dto/reorder-blogs.dto';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 
 @Injectable()
 export class BlogsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly membershipService: MembershipService,
+  ) {}
 
   // ── Public ──────────────────────────────────────────────────────────────
 
@@ -49,9 +54,7 @@ export class BlogsService {
         where,
         // Within a category, respect the writer's chosen display order;
         // the unfiltered feed stays newest-first.
-        orderBy: query.category
-          ? { sequence: 'asc' }
-          : { publishedAt: 'desc' },
+        orderBy: query.category ? { sequence: 'asc' } : { publishedAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
         include: { author: { select: { name: true } } },
@@ -70,7 +73,11 @@ export class BlogsService {
     };
   }
 
-  async findBySlug(slug: string) {
+  // REQ-083: price = 0 stays free for everyone; price > 0 requires either
+  // being the author/an admin or a SUCCESS Payment for this post (the
+  // Premium/Alumni discount from the same engine used for memberships
+  // applies to what they'd pay, but doesn't grant access by itself).
+  async findBySlug(slug: string, requestingUser?: AuthenticatedUser) {
     const post = await this.prisma.blog.findUnique({
       where: { slug },
       include: { author: { select: { name: true } } },
@@ -85,7 +92,38 @@ export class BlogsService {
       include: { author: { select: { name: true } } },
     });
 
-    return this.toPublicDetail(updated);
+    const hasAccess = await this.hasBlogAccess(updated, requestingUser);
+    if (hasAccess) return this.toPublicDetail(updated);
+
+    const discountPercent = requestingUser
+      ? (
+          await this.membershipService.calculatePrice(
+            requestingUser.userId,
+            updated.priceBdt,
+          )
+        ).discountPercent
+      : 0;
+    return this.toLockedDetail(updated, discountPercent);
+  }
+
+  private async hasBlogAccess(
+    post: { id: string; priceBdt: number; priceUsd: number; authorId: string },
+    requestingUser?: AuthenticatedUser,
+  ): Promise<boolean> {
+    if (post.priceBdt === 0 && post.priceUsd === 0) return true;
+    if (!requestingUser) return false;
+    if (requestingUser.role === Role.ADMIN) return true;
+    if (requestingUser.userId === post.authorId) return true;
+
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        userId: requestingUser.userId,
+        blogId: post.id,
+        type: 'BLOG',
+        status: 'SUCCESS',
+      },
+    });
+    return !!payment;
   }
 
   // ── Admin ───────────────────────────────────────────────────────────────
@@ -106,9 +144,7 @@ export class BlogsService {
       where,
       // Filtering to a single category surfaces the writer's chosen
       // sequence; otherwise show the most recently touched posts first.
-      orderBy: query.category
-        ? { sequence: 'asc' }
-        : { createdAt: 'desc' },
+      orderBy: query.category ? { sequence: 'asc' } : { createdAt: 'desc' },
       include: { author: { select: { name: true } } },
     });
 
@@ -154,7 +190,8 @@ export class BlogsService {
         tags: dto.tags ?? [],
         sequence,
         status,
-        price: dto.price ?? 0,
+        priceBdt: dto.priceBdt ?? 0,
+        priceUsd: dto.priceUsd ?? 0,
         readingTime: dto.readingTime ?? estimateReadingTime(content),
         publishedAt: status === BlogStatus.PUBLISHED ? new Date() : null,
         authorId,
@@ -197,7 +234,8 @@ export class BlogsService {
         tags: dto.tags,
         sequence,
         status: dto.status,
-        price: dto.price,
+        priceBdt: dto.priceBdt,
+        priceUsd: dto.priceUsd,
         readingTime:
           dto.readingTime ??
           (content ? estimateReadingTime(content) : undefined),
@@ -274,7 +312,8 @@ export class BlogsService {
       category: post.category,
       tags: post.tags,
       readingTime: post.readingTime,
-      price: post.price,
+      priceBdt: post.priceBdt,
+      priceUsd: post.priceUsd,
       views: post.views,
       author: post.author.name,
       publishedAt: post.publishedAt,
@@ -287,17 +326,49 @@ export class BlogsService {
     }>,
   ) {
     return {
+      id: post.id,
       title: post.title,
       slug: post.slug,
       excerpt: post.excerpt,
       content: post.content,
+      locked: false,
       featuredImage: post.featuredImage,
       metaTitle: post.metaTitle,
       metaDescription: post.metaDescription,
       category: post.category,
       tags: post.tags,
       readingTime: post.readingTime,
-      price: post.price,
+      priceBdt: post.priceBdt,
+      priceUsd: post.priceUsd,
+      discountPercent: 0,
+      views: post.views,
+      author: post.author.name,
+      publishedAt: post.publishedAt,
+    };
+  }
+
+  private toLockedDetail(
+    post: Prisma.BlogGetPayload<{
+      include: { author: { select: { name: true } } };
+    }>,
+    discountPercent: number,
+  ) {
+    return {
+      id: post.id,
+      title: post.title,
+      slug: post.slug,
+      excerpt: post.excerpt,
+      content: null,
+      locked: true,
+      featuredImage: post.featuredImage,
+      metaTitle: post.metaTitle,
+      metaDescription: post.metaDescription,
+      category: post.category,
+      tags: post.tags,
+      readingTime: post.readingTime,
+      priceBdt: post.priceBdt,
+      priceUsd: post.priceUsd,
+      discountPercent,
       views: post.views,
       author: post.author.name,
       publishedAt: post.publishedAt,

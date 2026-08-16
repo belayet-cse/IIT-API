@@ -53,7 +53,9 @@ export class EmailService {
     `;
 
     if (!this.resend) {
-      this.logger.log(`[dev email] Contact inquiry from ${inquiry.email}: ${inquiry.subject}`);
+      this.logger.log(
+        `[dev email] Contact inquiry from ${inquiry.email}: ${inquiry.subject}`,
+      );
       return;
     }
     await this.resend.emails.send({
@@ -79,7 +81,9 @@ export class EmailService {
     `;
 
     if (!this.resend) {
-      this.logger.log(`[dev email] Welcome credentials for ${to}: ${details.tempPassword}`);
+      this.logger.log(
+        `[dev email] Welcome credentials for ${to}: ${details.tempPassword}`,
+      );
       return;
     }
     await this.resend.emails.send({
@@ -109,30 +113,46 @@ export class EmailService {
     });
   }
 
-  async sendAlumniVerificationResultEmail(to: string, matched: boolean): Promise<void> {
+  async sendAlumniVerificationResultEmail(
+    to: string,
+    matched: boolean,
+  ): Promise<void> {
     const html = matched
       ? `<p>Good news — your alumni status has been verified. You now have full alumni access, including directory listing, discussion forum, and member discounts.</p>`
       : `<p>We reviewed our verified alumni records and couldn't find a match for your email address. Your account remains active as a General Member. If you believe this is an error, please contact us.</p>`;
 
     if (!this.resend) {
-      this.logger.log(`[dev email] Alumni verification result for ${to}: matched=${matched}`);
+      this.logger.log(
+        `[dev email] Alumni verification result for ${to}: matched=${matched}`,
+      );
       return;
     }
     await this.resend.emails.send({
       from: this.from,
       to,
-      subject: matched ? 'Your IIT alumni status is verified' : 'Update on your IIT alumni verification',
+      subject: matched
+        ? 'Your IIT alumni status is verified'
+        : 'Update on your IIT alumni verification',
       html,
     });
   }
 
-  async sendMembershipExpiryReminderEmail(to: string, expiresAt: Date): Promise<void> {
-    const dateLabel = expiresAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  async sendMembershipExpiryReminderEmail(
+    to: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    const dateLabel = expiresAt.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
     const html = `<p>Your IIT Premium membership expires on <strong>${dateLabel}</strong>. Renew soon to keep your
       member discounts and benefits without interruption.</p>`;
 
     if (!this.resend) {
-      this.logger.log(`[dev email] Membership expiry reminder for ${to}: expires ${dateLabel}`);
+      this.logger.log(
+        `[dev email] Membership expiry reminder for ${to}: expires ${dateLabel}`,
+      );
       return;
     }
     await this.resend.emails.send({
@@ -143,19 +163,50 @@ export class EmailService {
     });
   }
 
-  async sendMembershipActivatedEmail(to: string, tier: string, expiresAt: Date): Promise<void> {
-    const dateLabel = expiresAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  async sendMembershipActivatedEmail(
+    to: string,
+    tier: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    const dateLabel = expiresAt.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
     const html = `<p>Your IIT Premium membership (${escapeHtml(tier)} tier) is now active and valid until
       <strong>${dateLabel}</strong>. Thanks for joining!</p>`;
 
     if (!this.resend) {
-      this.logger.log(`[dev email] Membership activated for ${to}: ${tier}, expires ${dateLabel}`);
+      this.logger.log(
+        `[dev email] Membership activated for ${to}: ${tier}, expires ${dateLabel}`,
+      );
       return;
     }
     await this.resend.emails.send({
       from: this.from,
       to,
       subject: 'Your IIT Premium membership is active',
+      html,
+    });
+  }
+
+  async sendBlogUnlockedEmail(
+    to: string,
+    blogTitle: string,
+    blogSlug: string,
+  ): Promise<void> {
+    const postUrl = `${process.env.WEB_APP_URL}/blogs/${blogSlug}`;
+    const html = `<p>Your purchase of <strong>${escapeHtml(blogTitle)}</strong> has been confirmed. Read it now at
+      <a href="${postUrl}">${postUrl}</a>.</p>`;
+
+    if (!this.resend) {
+      this.logger.log(`[dev email] Blog unlocked for ${to}: ${blogTitle}`);
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: `You now have access to "${blogTitle}"`,
       html,
     });
   }

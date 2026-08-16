@@ -62,7 +62,12 @@ export class CreateBlogDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  price?: number;
+  priceBdt?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceUsd?: number;
 
   @IsOptional()
   @IsInt()
