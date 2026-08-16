@@ -134,6 +134,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   blogs               Blog[]
   payments            Payment[]
+  forumThreads        ForumThread[]
+  forumPosts          ForumPost[]
 
   @@map("users")
 }
@@ -279,4 +281,40 @@ model Category {
 
   @@index([sortOrder])
   @@map("categories")
+}
+
+model ForumThread {
+  id             String   @id @default(uuid())
+  title          String
+  content        String
+  category       String?
+  authorId       String
+  author         User     @relation(fields: [authorId], references: [id])
+  pinned         Boolean  @default(false)
+  locked         Boolean  @default(false)
+  replyCount     Int      @default(0)
+  views          Int      @default(0)
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  posts ForumPost[]
+
+  @@index([category])
+  @@index([lastActivityAt])
+  @@map("forum_threads")
+}
+
+model ForumPost {
+  id        String      @id @default(uuid())
+  threadId  String
+  thread    ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User        @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([threadId])
+  @@map("forum_posts")
 }

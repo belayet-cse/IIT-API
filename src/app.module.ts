@@ -13,6 +13,7 @@ import { ContactModule } from './contact/contact.module';
 import { ResearchersModule } from './researchers/researchers.module';
 import { MembershipModule } from './membership/membership.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ForumModule } from './forum/forum.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { PaymentsModule } from './payments/payments.module';
     ResearchersModule,
     MembershipModule,
     PaymentsModule,
+    ForumModule,
   ],
   controllers: [AppController],
   providers: [AppService],
