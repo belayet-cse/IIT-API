@@ -405,19 +405,36 @@ model ProgramModule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  completions ModuleCompletion[]
+
   @@index([programId])
   @@map("program_modules")
 }
 
 model Enrollment {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  programId  String
-  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
-  enrolledAt DateTime @default(now())
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId   String
+  program     Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+
+  moduleCompletions ModuleCompletion[]
 
   @@unique([userId, programId])
   @@index([programId])
   @@map("enrollments")
+}
+
+model ModuleCompletion {
+  id           String        @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  moduleId     String
+  module       ProgramModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  completedAt  DateTime      @default(now())
+
+  @@unique([enrollmentId, moduleId])
+  @@map("module_completions")
 }

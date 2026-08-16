@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { BlogStatus, Role } from '@prisma/client';
@@ -45,6 +46,32 @@ export class ProgramsController {
   @Post(':id/enroll')
   enroll(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.programsService.enroll(user, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/modules/:moduleId/complete')
+  completeModule(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('moduleId') moduleId: string,
+  ) {
+    return this.programsService.completeModule(user, id, moduleId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/certificate')
+  async getCertificate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    const { buffer, filename } = await this.programsService.getCertificate(
+      user,
+      id,
+    );
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 
   // ── Admin: manage programs (declared before the public :slug route) ────

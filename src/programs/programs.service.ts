@@ -8,6 +8,7 @@ import { BlogStatus, Prisma, Program, Role } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { MembershipService } from '../membership/membership.service';
 import { slugify } from '../common/utils/slugify';
+import { generateCertificatePdf } from './pdf/certificate';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
@@ -81,6 +82,26 @@ export class ProgramsService {
 
     const enrolled = await this.hasProgramAccess(program, requestingUser);
 
+    let completedModuleIds: string[] = [];
+    let completedAt: Date | null = null;
+    if (enrolled && requestingUser) {
+      const enrollment = await this.prisma.enrollment.findUnique({
+        where: {
+          userId_programId: {
+            userId: requestingUser.userId,
+            programId: program.id,
+          },
+        },
+        include: { moduleCompletions: true },
+      });
+      if (enrollment) {
+        completedModuleIds = enrollment.moduleCompletions.map(
+          (c) => c.moduleId,
+        );
+        completedAt = enrollment.completedAt;
+      }
+    }
+
     let discountPercent = 0;
     let finalPriceBdt = program.priceBdt;
     let finalPriceUsd = program.priceUsd;
@@ -118,6 +139,8 @@ export class ProgramsService {
       author: program.author.name,
       publishedAt: program.publishedAt,
       enrolled,
+      completedModuleIds,
+      completedAt,
       modules: program.modules.map((m) => ({
         id: m.id,
         title: m.title,
@@ -155,6 +178,84 @@ export class ProgramsService {
       data: { userId: user.userId, programId },
     });
     return { enrolled: true };
+  }
+
+  // REQ-043: modules are plain video links with no embedded player, so
+  // "complete" is a self-reported action, same honest-by-design spirit as
+  // the rest of the payment flow. Marks completedAt on the Enrollment once
+  // every module for the program has been checked off.
+  async completeModule(
+    user: AuthenticatedUser,
+    programId: string,
+    moduleId: string,
+  ) {
+    const enrollment = await this.prisma.enrollment.findUnique({
+      where: { userId_programId: { userId: user.userId, programId } },
+    });
+    if (!enrollment)
+      throw new BadRequestException(
+        'You must be enrolled in this program first.',
+      );
+
+    const module = await this.prisma.programModule.findUnique({
+      where: { id: moduleId },
+    });
+    if (!module || module.programId !== programId)
+      throw new NotFoundException('Module not found.');
+
+    await this.prisma.moduleCompletion.upsert({
+      where: {
+        enrollmentId_moduleId: { enrollmentId: enrollment.id, moduleId },
+      },
+      create: { enrollmentId: enrollment.id, moduleId },
+      update: {},
+    });
+
+    if (!enrollment.completedAt) {
+      const [totalModules, completedCount] = await Promise.all([
+        this.prisma.programModule.count({ where: { programId } }),
+        this.prisma.moduleCompletion.count({
+          where: { enrollmentId: enrollment.id },
+        }),
+      ]);
+      if (totalModules > 0 && completedCount >= totalModules) {
+        await this.prisma.enrollment.update({
+          where: { id: enrollment.id },
+          data: { completedAt: new Date() },
+        });
+      }
+    }
+
+    return { completed: true };
+  }
+
+  async getCertificate(
+    user: AuthenticatedUser,
+    programId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const [enrollment, program, dbUser] = await Promise.all([
+      this.prisma.enrollment.findUnique({
+        where: { userId_programId: { userId: user.userId, programId } },
+      }),
+      this.prisma.program.findUnique({ where: { id: programId } }),
+      this.prisma.user.findUnique({ where: { id: user.userId } }),
+    ]);
+    if (!enrollment || !program || !dbUser)
+      throw new NotFoundException('Enrollment not found.');
+    if (!enrollment.completedAt) {
+      throw new BadRequestException(
+        'Complete all modules to unlock your certificate.',
+      );
+    }
+
+    const buffer = await generateCertificatePdf({
+      learnerName: dbUser.name,
+      programTitle: program.title,
+      completedAt: enrollment.completedAt,
+      referenceCode: enrollment.id.slice(0, 8).toUpperCase(),
+    });
+
+    return { buffer, filename: `${slugify(program.title)}-certificate.pdf` };
   }
 
   private async hasProgramAccess(
