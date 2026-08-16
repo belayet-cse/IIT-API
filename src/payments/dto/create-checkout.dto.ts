@@ -17,6 +17,10 @@ export class CreateCheckoutDto {
   @IsString()
   paperId?: string;
 
+  @IsOptional()
+  @IsString()
+  programId?: string;
+
   @IsEnum(PaymentCurrency)
   currency: PaymentCurrency;
 }

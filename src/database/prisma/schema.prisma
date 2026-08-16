@@ -44,6 +44,12 @@ enum PaymentType {
   MEMBERSHIP
   BLOG
   RESEARCH
+  PROGRAM
+}
+
+enum ProgramType {
+  INTERNATIONAL
+  PROPRIETARY
 }
 
 enum PaymentCurrency {
@@ -98,6 +104,8 @@ model Payment {
   blog              Blog?           @relation(fields: [blogId], references: [id], onDelete: SetNull)
   paperId           String?
   paper             ResearchPaper?  @relation(fields: [paperId], references: [id], onDelete: SetNull)
+  programId         String?
+  program           Program?        @relation(fields: [programId], references: [id], onDelete: SetNull)
   currency          PaymentCurrency
   gateway           PaymentGateway?
   amount            Int
@@ -113,6 +121,7 @@ model Payment {
   @@index([status])
   @@index([blogId])
   @@index([paperId])
+  @@index([programId])
   @@map("payments")
 }
 
@@ -141,6 +150,8 @@ model User {
   forumThreads        ForumThread[]
   forumPosts          ForumPost[]
   researchPapers      ResearchPaper[]
+  programs            Program[]
+  enrollments         Enrollment[]
 
   @@map("users")
 }
@@ -350,4 +361,63 @@ model ResearchPaper {
   @@index([status])
   @@index([publishedAt])
   @@map("research_papers")
+}
+
+model Program {
+  id            String        @id @default(uuid())
+  title         String
+  slug          String        @unique
+  code          String?
+  type          ProgramType
+  overview      String
+  whoItsFor     String?
+  examInfo      String?
+  featuredImage String?
+  priceBdt      Int           @default(0)
+  priceUsd      Int           @default(0)
+  freeForBasic  Boolean       @default(false)
+  freeForPro    Boolean       @default(false)
+  freeForElite  Boolean       @default(false)
+  featured      Boolean       @default(false)
+  status        BlogStatus    @default(DRAFT)
+  authorId      String
+  author        User          @relation(fields: [authorId], references: [id])
+  publishedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  modules     ProgramModule[]
+  enrollments Enrollment[]
+  payments    Payment[]
+
+  @@index([status])
+  @@index([type])
+  @@map("programs")
+}
+
+model ProgramModule {
+  id        String   @id @default(uuid())
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  title     String
+  videoUrl  String?
+  sequence  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([programId])
+  @@map("program_modules")
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  enrolledAt DateTime @default(now())
+
+  @@unique([userId, programId])
+  @@index([programId])
+  @@map("enrollments")
 }

@@ -31,6 +31,8 @@ export class PaymentsService {
     if (dto.type === 'BLOG') return this.initiateBlogCheckout(userId, dto);
     if (dto.type === 'RESEARCH')
       return this.initiateResearchCheckout(userId, dto);
+    if (dto.type === 'PROGRAM')
+      return this.initiateProgramCheckout(userId, dto);
     return this.initiateMembershipCheckout(userId, dto);
   }
 
@@ -148,6 +150,51 @@ export class PaymentsService {
     };
   }
 
+  // REQ-042: by the time a user reaches checkout, the free-for-tier/alumni
+  // overrides in ProgramsService.enroll() have already been ruled out (that
+  // path enrolls directly at zero cost) — so this only needs the standard
+  // percentage discount, same as Blog/Research.
+  private async initiateProgramCheckout(
+    userId: string,
+    dto: CreateCheckoutDto,
+  ) {
+    if (!dto.programId) throw new BadRequestException('programId is required.');
+    const program = await this.prisma.program.findUnique({
+      where: { id: dto.programId },
+    });
+    if (!program) throw new NotFoundException('Program not found.');
+    if (program.priceBdt === 0 && program.priceUsd === 0) {
+      throw new BadRequestException(
+        'This program is free — enroll directly instead.',
+      );
+    }
+
+    const basePrice =
+      dto.currency === 'BDT' ? program.priceBdt : program.priceUsd;
+    const { discountPercent, finalPrice } =
+      await this.membershipService.calculatePrice(userId, basePrice);
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        type: dto.type,
+        programId: dto.programId,
+        currency: dto.currency,
+        amount: basePrice,
+        discountPercent,
+        status: 'PENDING',
+      },
+    });
+
+    return {
+      payment,
+      checkoutUrl: null,
+      live: false,
+      finalPrice,
+      message: `${NOT_LIVE_MESSAGE} We'll enroll you in "${program.title}" once it clears.`,
+    };
+  }
+
   async listPayments(status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED') {
     const payments = await this.prisma.payment.findMany({
       where: status ? { status } : undefined,
@@ -156,6 +203,7 @@ export class PaymentsService {
         user: { select: { name: true, email: true } },
         blog: { select: { title: true } },
         paper: { select: { title: true } },
+        program: { select: { title: true } },
       },
     });
 
@@ -167,6 +215,7 @@ export class PaymentsService {
       membershipTier: p.membershipTier,
       blogTitle: p.blog?.title ?? null,
       paperTitle: p.paper?.title ?? null,
+      programTitle: p.program?.title ?? null,
       currency: p.currency,
       amount: p.amount,
       discountPercent: p.discountPercent,
@@ -190,6 +239,8 @@ export class PaymentsService {
       return this.markBlogPaid(payment, adminUserId, dto);
     if (payment.type === 'RESEARCH')
       return this.markResearchPaid(payment, adminUserId, dto);
+    if (payment.type === 'PROGRAM')
+      return this.markProgramPaid(payment, adminUserId, dto);
     return this.markMembershipPaid(payment, adminUserId, dto);
   }
 
@@ -292,6 +343,49 @@ export class PaymentsService {
       user.email,
       paper.title,
       paper.slug,
+    );
+    return { success: true };
+  }
+
+  private async markProgramPaid(
+    payment: { id: string; userId: string; programId: string | null },
+    adminUserId: string,
+    dto: MarkPaidDto,
+  ) {
+    if (!payment.programId)
+      throw new BadRequestException('Unsupported payment type.');
+
+    const [, program, user] = await this.prisma.$transaction([
+      this.prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'SUCCESS',
+          gateway: 'MANUAL',
+          processedByUserId: adminUserId,
+          note: dto.note,
+        },
+      }),
+      this.prisma.program.findUniqueOrThrow({
+        where: { id: payment.programId },
+      }),
+      this.prisma.user.findUniqueOrThrow({ where: { id: payment.userId } }),
+    ]);
+
+    await this.prisma.enrollment.upsert({
+      where: {
+        userId_programId: {
+          userId: payment.userId,
+          programId: payment.programId,
+        },
+      },
+      create: { userId: payment.userId, programId: payment.programId },
+      update: {},
+    });
+
+    await this.emailService.sendEnrollmentConfirmedEmail(
+      user.email,
+      program.title,
+      program.slug,
     );
     return { success: true };
   }

@@ -231,4 +231,27 @@ export class EmailService {
       html,
     });
   }
+
+  async sendEnrollmentConfirmedEmail(
+    to: string,
+    programTitle: string,
+    programSlug: string,
+  ): Promise<void> {
+    const programUrl = `${process.env.WEB_APP_URL}/programs/${programSlug}`;
+    const html = `<p>Your enrollment in <strong>${escapeHtml(programTitle)}</strong> has been confirmed. Start learning at
+      <a href="${programUrl}">${programUrl}</a>.</p>`;
+
+    if (!this.resend) {
+      this.logger.log(
+        `[dev email] Enrollment confirmed for ${to}: ${programTitle}`,
+      );
+      return;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: `You're enrolled in "${programTitle}"`,
+      html,
+    });
+  }
 }
