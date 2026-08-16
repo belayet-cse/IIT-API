@@ -4,11 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { PaymentGateway } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../email/email.service';
 import { MembershipService } from '../membership/membership.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { MarkPaidDto } from './dto/mark-paid.dto';
+import {
+  initiateSslcommerzPayment,
+  isSslcommerzConfigured,
+} from './sslcommerz';
 
 const MEMBERSHIP_DURATION_MS = 365 * 24 * 60 * 60 * 1000;
 const NOT_LIVE_MESSAGE =
@@ -22,11 +28,59 @@ export class PaymentsService {
     private readonly membershipService: MembershipService,
   ) {}
 
-  // No SSLCommerz/Stripe credentials exist yet, so this only records purchase
-  // intent — it does not move money. Once real credentials are added, this is
-  // the one place that needs to grow a real gateway call (see the `gateway`
-  // field left null below); the rest of the flow (Payment record, admin
-  // reconciliation, entitlement grant) is already real and in production use.
+  // If SSLCommerz credentials are configured, redirect to a real hosted
+  // checkout; otherwise fall back to the manual-recording flow (Payment row
+  // stays PENDING until an admin reconciles it out of band).
+  private async createGatewayCheckout(
+    userId: string,
+    paymentId: string,
+    finalPrice: number,
+    currency: string,
+    productName: string,
+  ): Promise<{ checkoutUrl: string; live: true; message: string } | null> {
+    if (!isSslcommerzConfigured() || finalPrice <= 0) return null;
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return null;
+
+    const apiBaseUrl = process.env.API_BASE_URL;
+    if (!apiBaseUrl) return null;
+
+    // SSLCommerz caps tran_id at 30 chars — payment.id (a UUID) is too long,
+    // so a short reference is generated and stored in gatewayReference,
+    // which the callback routes then look the payment back up by.
+    const shortTranId = randomBytes(10).toString('hex');
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { gatewayReference: shortTranId },
+    });
+
+    try {
+      const checkoutUrl = await initiateSslcommerzPayment({
+        tranId: shortTranId,
+        totalAmount: finalPrice,
+        currency,
+        successUrl: `${apiBaseUrl}/api/payments/sslcommerz/success`,
+        failUrl: `${apiBaseUrl}/api/payments/sslcommerz/fail`,
+        cancelUrl: `${apiBaseUrl}/api/payments/sslcommerz/cancel`,
+        ipnUrl: `${apiBaseUrl}/api/payments/sslcommerz/ipn`,
+        customerName: user.name,
+        customerEmail: user.email,
+        customerPhone: user.phone || '01700000000',
+        customerAddress: user.address || 'N/A',
+        customerCity: 'Dhaka',
+        productName,
+      });
+      return {
+        checkoutUrl,
+        live: true,
+        message: 'Redirecting to secure payment…',
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async initiateCheckout(userId: string, dto: CreateCheckoutDto) {
     if (dto.type === 'BLOG') return this.initiateBlogCheckout(userId, dto);
     if (dto.type === 'RESEARCH')
@@ -65,6 +119,15 @@ export class PaymentsService {
       data: { desiredMembershipTier: dto.membershipTier },
     });
 
+    const gateway = await this.createGatewayCheckout(
+      userId,
+      payment.id,
+      amount,
+      dto.currency,
+      `IIT ${dto.membershipTier} Membership`,
+    );
+    if (gateway) return { payment, ...gateway };
+
     return {
       payment,
       checkoutUrl: null,
@@ -100,6 +163,15 @@ export class PaymentsService {
         status: 'PENDING',
       },
     });
+
+    const gateway = await this.createGatewayCheckout(
+      userId,
+      payment.id,
+      finalPrice,
+      dto.currency,
+      blog.title,
+    );
+    if (gateway) return { payment, finalPrice, ...gateway };
 
     return {
       payment,
@@ -140,6 +212,15 @@ export class PaymentsService {
         status: 'PENDING',
       },
     });
+
+    const gateway = await this.createGatewayCheckout(
+      userId,
+      payment.id,
+      finalPrice,
+      dto.currency,
+      paper.title,
+    );
+    if (gateway) return { payment, finalPrice, ...gateway };
 
     return {
       payment,
@@ -185,6 +266,15 @@ export class PaymentsService {
         status: 'PENDING',
       },
     });
+
+    const gateway = await this.createGatewayCheckout(
+      userId,
+      payment.id,
+      finalPrice,
+      dto.currency,
+      program.title,
+    );
+    if (gateway) return { payment, finalPrice, ...gateway };
 
     return {
       payment,
@@ -235,19 +325,88 @@ export class PaymentsService {
       throw new ConflictException('This payment has already been processed.');
     }
 
-    if (payment.type === 'BLOG')
-      return this.markBlogPaid(payment, adminUserId, dto);
+    return this.grantPayment(payment, {
+      gateway: 'MANUAL',
+      adminUserId,
+      note: dto.note,
+    });
+  }
+
+  // ── Gateway callbacks (SSLCommerz success_url / ipn_url) ──────────────────
+  // Both routes converge here so a missed browser redirect (closed tab,
+  // network drop) doesn't leave the payment stuck — the IPN backstop fires
+  // the exact same logic. Safe to call twice: only PENDING payments proceed.
+
+  async handleGatewaySuccess(tranId: string, bankTranId?: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { gatewayReference: tranId },
+    });
+    if (!payment) return { handled: false };
+    if (payment.status !== 'PENDING') return { handled: true, payment };
+
+    await this.grantPayment(payment, {
+      gateway: 'SSLCOMMERZ',
+      note: bankTranId ? `SSLCommerz bank_tran_id: ${bankTranId}` : undefined,
+    });
+    return { handled: true, payment };
+  }
+
+  async handleGatewayFail(tranId: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { gatewayReference: tranId },
+    });
+    if (!payment || payment.status !== 'PENDING') return { handled: false };
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 'FAILED' },
+    });
+    return { handled: true, payment };
+  }
+
+  async handleGatewayCancel(tranId: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { gatewayReference: tranId },
+    });
+    if (!payment || payment.status !== 'PENDING') return { handled: false };
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 'CANCELLED' },
+    });
+    return { handled: true, payment };
+  }
+
+  private async grantPayment(
+    payment: {
+      id: string;
+      userId: string;
+      type: string;
+      membershipTier: string | null;
+      blogId: string | null;
+      paperId: string | null;
+      programId: string | null;
+    },
+    opts: {
+      gateway: PaymentGateway;
+      gatewayReference?: string;
+      adminUserId?: string;
+      note?: string;
+    },
+  ) {
+    if (payment.type === 'BLOG') return this.markBlogPaid(payment, opts);
     if (payment.type === 'RESEARCH')
-      return this.markResearchPaid(payment, adminUserId, dto);
-    if (payment.type === 'PROGRAM')
-      return this.markProgramPaid(payment, adminUserId, dto);
-    return this.markMembershipPaid(payment, adminUserId, dto);
+      return this.markResearchPaid(payment, opts);
+    if (payment.type === 'PROGRAM') return this.markProgramPaid(payment, opts);
+    return this.markMembershipPaid(payment, opts);
   }
 
   private async markMembershipPaid(
     payment: { id: string; userId: string; membershipTier: string | null },
-    adminUserId: string,
-    dto: MarkPaidDto,
+    opts: {
+      gateway: PaymentGateway;
+      gatewayReference?: string;
+      adminUserId?: string;
+      note?: string;
+    },
   ) {
     if (!payment.membershipTier)
       throw new BadRequestException('Unsupported payment type.');
@@ -259,9 +418,10 @@ export class PaymentsService {
         where: { id: payment.id },
         data: {
           status: 'SUCCESS',
-          gateway: 'MANUAL',
-          processedByUserId: adminUserId,
-          note: dto.note,
+          gateway: opts.gateway,
+          gatewayReference: opts.gatewayReference,
+          processedByUserId: opts.adminUserId,
+          note: opts.note,
         },
       }),
       this.prisma.user.update({
@@ -285,8 +445,12 @@ export class PaymentsService {
 
   private async markBlogPaid(
     payment: { id: string; userId: string; blogId: string | null },
-    adminUserId: string,
-    dto: MarkPaidDto,
+    opts: {
+      gateway: PaymentGateway;
+      gatewayReference?: string;
+      adminUserId?: string;
+      note?: string;
+    },
   ) {
     if (!payment.blogId)
       throw new BadRequestException('Unsupported payment type.');
@@ -296,9 +460,10 @@ export class PaymentsService {
         where: { id: payment.id },
         data: {
           status: 'SUCCESS',
-          gateway: 'MANUAL',
-          processedByUserId: adminUserId,
-          note: dto.note,
+          gateway: opts.gateway,
+          gatewayReference: opts.gatewayReference,
+          processedByUserId: opts.adminUserId,
+          note: opts.note,
         },
       }),
       this.prisma.blog.findUniqueOrThrow({ where: { id: payment.blogId } }),
@@ -316,8 +481,12 @@ export class PaymentsService {
 
   private async markResearchPaid(
     payment: { id: string; userId: string; paperId: string | null },
-    adminUserId: string,
-    dto: MarkPaidDto,
+    opts: {
+      gateway: PaymentGateway;
+      gatewayReference?: string;
+      adminUserId?: string;
+      note?: string;
+    },
   ) {
     if (!payment.paperId)
       throw new BadRequestException('Unsupported payment type.');
@@ -327,9 +496,10 @@ export class PaymentsService {
         where: { id: payment.id },
         data: {
           status: 'SUCCESS',
-          gateway: 'MANUAL',
-          processedByUserId: adminUserId,
-          note: dto.note,
+          gateway: opts.gateway,
+          gatewayReference: opts.gatewayReference,
+          processedByUserId: opts.adminUserId,
+          note: opts.note,
         },
       }),
       this.prisma.researchPaper.findUniqueOrThrow({
@@ -349,8 +519,12 @@ export class PaymentsService {
 
   private async markProgramPaid(
     payment: { id: string; userId: string; programId: string | null },
-    adminUserId: string,
-    dto: MarkPaidDto,
+    opts: {
+      gateway: PaymentGateway;
+      gatewayReference?: string;
+      adminUserId?: string;
+      note?: string;
+    },
   ) {
     if (!payment.programId)
       throw new BadRequestException('Unsupported payment type.');
@@ -360,9 +534,10 @@ export class PaymentsService {
         where: { id: payment.id },
         data: {
           status: 'SUCCESS',
-          gateway: 'MANUAL',
-          processedByUserId: adminUserId,
-          note: dto.note,
+          gateway: opts.gateway,
+          gatewayReference: opts.gatewayReference,
+          processedByUserId: opts.adminUserId,
+          note: opts.note,
         },
       }),
       this.prisma.program.findUniqueOrThrow({
