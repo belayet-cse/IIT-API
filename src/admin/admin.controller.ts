@@ -35,6 +35,13 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
+  @Get('analytics')
+  analytics() {
+    return this.adminService.analytics();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Post('go-live/preview')
   @UseInterceptors(FileInterceptor('file', CSV_UPLOAD_OPTIONS))
   previewGoLive(@UploadedFile() file?: Express.Multer.File) {

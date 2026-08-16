@@ -86,11 +86,16 @@ export class BlogsService {
       throw new NotFoundException('Blog post not found.');
     }
 
-    const updated = await this.prisma.blog.update({
-      where: { id: post.id },
-      data: { views: { increment: 1 } },
-      include: { author: { select: { name: true } } },
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.blog.update({
+        where: { id: post.id },
+        data: { views: { increment: 1 } },
+        include: { author: { select: { name: true } } },
+      }),
+      this.prisma.contentView.create({
+        data: { type: 'BLOG', contentId: post.id },
+      }),
+    ]);
 
     const hasAccess = await this.hasBlogAccess(updated, requestingUser);
     if (hasAccess) return this.toPublicDetail(updated);

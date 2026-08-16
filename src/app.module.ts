@@ -16,6 +16,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { ForumModule } from './forum/forum.module';
 import { ResearchModule } from './research/research.module';
 import { ProgramsModule } from './programs/programs.module';
+import { EventsModule } from './events/events.module';
+import { PartnersModule } from './partners/partners.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { ProgramsModule } from './programs/programs.module';
     ForumModule,
     ResearchModule,
     ProgramsModule,
+    EventsModule,
+    PartnersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

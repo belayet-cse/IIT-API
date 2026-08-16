@@ -1,4 +1,11 @@
-import { ArrayMinSize, IsArray, IsEmail, IsString, MinLength, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEmail,
+  IsString,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class GoLiveEntry {

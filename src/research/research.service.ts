@@ -76,11 +76,16 @@ export class ResearchService {
       throw new NotFoundException('Research paper not found.');
     }
 
-    const updated = await this.prisma.researchPaper.update({
-      where: { id: paper.id },
-      data: { views: { increment: 1 } },
-      include: { author: { select: { name: true } } },
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.researchPaper.update({
+        where: { id: paper.id },
+        data: { views: { increment: 1 } },
+        include: { author: { select: { name: true } } },
+      }),
+      this.prisma.contentView.create({
+        data: { type: 'RESEARCH', contentId: paper.id },
+      }),
+    ]);
 
     const hasAccess = await this.hasPaperAccess(updated, requestingUser);
     if (hasAccess) return this.toPublicDetail(updated);

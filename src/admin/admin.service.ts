@@ -51,6 +51,43 @@ export class AdminService {
     };
   }
 
+  // Content engagement over time — a real per-view log (ContentView), not a
+  // derived/fabricated series, since the plain `views` counters on Blog and
+  // Research have no timestamp history to chart.
+  async analytics() {
+    const [rows, topBlogs, topResearch] = await Promise.all([
+      this.prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+        SELECT DATE_TRUNC('day', "viewedAt") AS day, COUNT(*) AS count
+        FROM "content_views"
+        WHERE "viewedAt" >= NOW() - INTERVAL '30 days'
+        GROUP BY day
+        ORDER BY day ASC
+      `,
+      this.prisma.blog.findMany({
+        orderBy: { views: 'desc' },
+        take: 5,
+        select: { title: true, slug: true, views: true },
+      }),
+      this.prisma.researchPaper.findMany({
+        orderBy: { views: 'desc' },
+        take: 5,
+        select: { title: true, slug: true, views: true },
+      }),
+    ]);
+
+    const countByDay = new Map(
+      rows.map((r) => [r.day.toISOString().slice(0, 10), Number(r.count)]),
+    );
+    const viewsByDay = Array.from({ length: 30 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (29 - i));
+      const key = date.toISOString().slice(0, 10);
+      return { date: key, count: countByDay.get(key) ?? 0 };
+    });
+
+    return { viewsByDay, topBlogs, topResearch };
+  }
+
   // ── Go-live bulk rollout (REQ-093 / REQ-095) ──────────────────────────────
 
   async previewGoLive(csvText: string) {
@@ -62,7 +99,9 @@ export class AdminService {
     const existingEmails = new Set(existing.map((u) => u.email.toLowerCase()));
 
     const newEntries = rows.filter((r) => !existingEmails.has(r.email));
-    const alreadyExistsEmails = rows.filter((r) => existingEmails.has(r.email)).map((r) => r.email);
+    const alreadyExistsEmails = rows
+      .filter((r) => existingEmails.has(r.email))
+      .map((r) => r.email);
 
     return { newEntries, alreadyExistsEmails };
   }
