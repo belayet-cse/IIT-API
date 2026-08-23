@@ -77,38 +77,53 @@ export class BlogsService {
   // being the author/an admin or a SUCCESS Payment for this post (the
   // Premium/Alumni discount from the same engine used for memberships
   // applies to what they'd pay, but doesn't grant access by itself).
+  //
+  // A DRAFT post is otherwise invisible (404), except to its author or an
+  // admin — this is what powers the admin panel's "Preview" button, letting
+  // a draft be checked exactly as readers will see it before it's published.
   async findBySlug(slug: string, requestingUser?: AuthenticatedUser) {
     const post = await this.prisma.blog.findUnique({
       where: { slug },
       include: { author: { select: { name: true } } },
     });
-    if (!post || post.status !== BlogStatus.PUBLISHED) {
+    if (!post) throw new NotFoundException('Blog post not found.');
+
+    const isPreviewer =
+      !!requestingUser &&
+      (requestingUser.role === Role.ADMIN ||
+        requestingUser.userId === post.authorId);
+    if (post.status !== BlogStatus.PUBLISHED && !isPreviewer) {
       throw new NotFoundException('Blog post not found.');
     }
 
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.blog.update({
-        where: { id: post.id },
-        data: { views: { increment: 1 } },
-        include: { author: { select: { name: true } } },
-      }),
-      this.prisma.contentView.create({
-        data: { type: 'BLOG', contentId: post.id },
-      }),
-    ]);
+    // A draft preview isn't a real reader visit — don't count it.
+    let current = post;
+    if (post.status === BlogStatus.PUBLISHED) {
+      const [updated] = await this.prisma.$transaction([
+        this.prisma.blog.update({
+          where: { id: post.id },
+          data: { views: { increment: 1 } },
+          include: { author: { select: { name: true } } },
+        }),
+        this.prisma.contentView.create({
+          data: { type: 'BLOG', contentId: post.id },
+        }),
+      ]);
+      current = updated;
+    }
 
-    const hasAccess = await this.hasBlogAccess(updated, requestingUser);
-    if (hasAccess) return this.toPublicDetail(updated);
+    const hasAccess = await this.hasBlogAccess(current, requestingUser);
+    if (hasAccess) return this.toPublicDetail(current);
 
     const discountPercent = requestingUser
       ? (
           await this.membershipService.calculatePrice(
             requestingUser.userId,
-            updated.priceBdt,
+            current.priceBdt,
           )
         ).discountPercent
       : 0;
-    return this.toLockedDetail(updated, discountPercent);
+    return this.toLockedDetail(current, discountPercent);
   }
 
   private async hasBlogAccess(
