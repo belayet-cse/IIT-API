@@ -160,6 +160,8 @@ model User {
   payments            Payment[]
   forumThreads        ForumThread[]
   forumPosts          ForumPost[]
+  forumPostLikes      ForumPostLike[]
+  forumThreadLikes    ForumThreadLike[]
   researchPapers      ResearchPaper[]
   programs            Program[]
   enrollments         Enrollment[]
@@ -322,11 +324,13 @@ model ForumThread {
   locked         Boolean  @default(false)
   replyCount     Int      @default(0)
   views          Int      @default(0)
+  likeCount      Int      @default(0)
   lastActivityAt DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   posts ForumPost[]
+  likes ForumThreadLike[]
 
   @@index([category])
   @@index([lastActivityAt])
@@ -334,17 +338,47 @@ model ForumThread {
 }
 
 model ForumPost {
+  id           String      @id @default(uuid())
+  threadId     String
+  thread       ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User        @relation(fields: [authorId], references: [id])
+  content      String
+  parentPostId String?
+  parentPost   ForumPost?  @relation("PostReplies", fields: [parentPostId], references: [id], onDelete: SetNull)
+  replies      ForumPost[] @relation("PostReplies")
+  likeCount    Int         @default(0)
+  likes        ForumPostLike[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([threadId])
+  @@index([parentPostId])
+  @@map("forum_posts")
+}
+
+model ForumPostLike {
+  id        String    @id @default(uuid())
+  postId    String
+  post      ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([postId, userId])
+  @@map("forum_post_likes")
+}
+
+model ForumThreadLike {
   id        String      @id @default(uuid())
   threadId  String
   thread    ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User        @relation(fields: [authorId], references: [id])
-  content   String
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
 
-  @@index([threadId])
-  @@map("forum_posts")
+  @@unique([threadId, userId])
+  @@map("forum_thread_likes")
 }
 
 model ResearchPaper {

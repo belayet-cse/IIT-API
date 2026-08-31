@@ -32,11 +32,13 @@ export class ForumController {
   list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('category') category?: string,
+    @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.forumService.list(user, {
       category,
+      search,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
@@ -92,6 +94,20 @@ export class ForumController {
   @Get('threads/:id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.forumService.findById(user, id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.PREMIUM, Role.ALUMNI, Role.ADMIN)
+  @Post('posts/:id/like')
+  toggleLike(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.forumService.toggleLike(user, id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.PREMIUM, Role.ALUMNI, Role.ADMIN)
+  @Post('threads/:id/like')
+  toggleThreadLike(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.forumService.toggleThreadLike(user, id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -19,7 +19,7 @@ export class ForumService {
 
   async list(
     user: AuthenticatedUser,
-    query: { category?: string; page?: number; limit?: number },
+    query: { category?: string; search?: string; page?: number; limit?: number },
   ) {
     await this.assertAccess(user);
 
@@ -29,6 +29,9 @@ export class ForumService {
 
     const where: Prisma.ForumThreadWhereInput = {};
     if (query.category) where.category = query.category;
+    if (query.search) {
+      where.title = { contains: query.search, mode: 'insensitive' };
+    }
 
     const [threads, total] = await Promise.all([
       this.prisma.forumThread.findMany({
@@ -57,7 +60,7 @@ export class ForumService {
 
     const thread = await this.prisma.forumThread.findUnique({
       where: { id },
-      include: { author: { select: { name: true } } },
+      include: { author: { select: { role: true } } },
     });
     if (!thread) throw new NotFoundException('Thread not found.');
 
@@ -65,21 +68,43 @@ export class ForumService {
       this.prisma.forumThread.update({
         where: { id },
         data: { views: { increment: 1 } },
-        include: { author: { select: { name: true } } },
+        include: { author: { select: { name: true, role: true, organization: true } } },
       }),
       this.prisma.forumPost.findMany({
         where: { threadId: id },
         orderBy: { createdAt: 'asc' },
-        include: { author: { select: { name: true } } },
+        include: {
+          author: { select: { id: true, name: true, role: true, organization: true } },
+        },
       }),
     ]);
 
+    const [myPostLikes, myThreadLike] = await Promise.all([
+      posts.length
+        ? this.prisma.forumPostLike.findMany({
+            where: { userId: user.userId, postId: { in: posts.map((p) => p.id) } },
+            select: { postId: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.forumThreadLike.findUnique({
+        where: { threadId_userId: { threadId: id, userId: user.userId } },
+      }),
+    ]);
+    const likedPostIds = new Set(myPostLikes.map((l) => l.postId));
+
     return {
       ...this.toDetail(updated),
+      isLiked: !!myThreadLike,
       replies: posts.map((p) => ({
         id: p.id,
         content: p.content,
         author: p.author.name,
+        authorId: p.authorId,
+        authorRole: p.author.role,
+        authorOrganization: p.author.organization,
+        parentPostId: p.parentPostId,
+        likeCount: p.likeCount,
+        isLiked: likedPostIds.has(p.id),
         createdAt: p.createdAt,
       })),
     };
@@ -114,9 +139,25 @@ export class ForumService {
         'This thread is locked and no longer accepting replies.',
       );
 
+    if (dto.parentPostId) {
+      const parent = await this.prisma.forumPost.findUnique({
+        where: { id: dto.parentPostId },
+      });
+      if (!parent || parent.threadId !== threadId) {
+        throw new BadRequestException(
+          'The post being replied to does not belong to this thread.',
+        );
+      }
+    }
+
     const [post] = await this.prisma.$transaction([
       this.prisma.forumPost.create({
-        data: { threadId, authorId: user.userId, content: dto.content },
+        data: {
+          threadId,
+          authorId: user.userId,
+          content: dto.content,
+          parentPostId: dto.parentPostId,
+        },
       }),
       this.prisma.forumThread.update({
         where: { id: threadId },
@@ -125,6 +166,41 @@ export class ForumService {
     ]);
 
     return { id: post.id };
+  }
+
+  async toggleLike(user: AuthenticatedUser, postId: string) {
+    await this.assertAccess(user);
+
+    const post = await this.prisma.forumPost.findUnique({
+      where: { id: postId },
+    });
+    if (!post) throw new NotFoundException('Post not found.');
+
+    const existing = await this.prisma.forumPostLike.findUnique({
+      where: { postId_userId: { postId, userId: user.userId } },
+    });
+
+    if (existing) {
+      const [, updated] = await this.prisma.$transaction([
+        this.prisma.forumPostLike.delete({ where: { id: existing.id } }),
+        this.prisma.forumPost.update({
+          where: { id: postId },
+          data: { likeCount: { decrement: 1 } },
+        }),
+      ]);
+      return { liked: false, likeCount: updated.likeCount };
+    }
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.forumPostLike.create({
+        data: { postId, userId: user.userId },
+      }),
+      this.prisma.forumPost.update({
+        where: { id: postId },
+        data: { likeCount: { increment: 1 } },
+      }),
+    ]);
+    return { liked: true, likeCount: updated.likeCount };
   }
 
   // ── Admin ───────────────────────────────────────────────────────────────
@@ -216,6 +292,7 @@ export class ForumService {
       title: thread.title,
       category: thread.category,
       author: thread.author.name,
+      authorId: thread.authorId,
       pinned: thread.pinned,
       locked: thread.locked,
       replyCount: thread.replyCount,
@@ -227,7 +304,7 @@ export class ForumService {
 
   private toDetail(
     thread: Prisma.ForumThreadGetPayload<{
-      include: { author: { select: { name: true } } };
+      include: { author: { select: { name: true; role: true; organization: true } } };
     }>,
   ) {
     return {
@@ -236,12 +313,51 @@ export class ForumService {
       content: thread.content,
       category: thread.category,
       author: thread.author.name,
+      authorId: thread.authorId,
+      authorRole: thread.author.role,
+      authorOrganization: thread.author.organization,
       pinned: thread.pinned,
       locked: thread.locked,
       replyCount: thread.replyCount,
       views: thread.views,
+      likeCount: thread.likeCount,
       lastActivityAt: thread.lastActivityAt,
       createdAt: thread.createdAt,
     };
+  }
+
+  async toggleThreadLike(user: AuthenticatedUser, threadId: string) {
+    await this.assertAccess(user);
+
+    const thread = await this.prisma.forumThread.findUnique({
+      where: { id: threadId },
+    });
+    if (!thread) throw new NotFoundException('Thread not found.');
+
+    const existing = await this.prisma.forumThreadLike.findUnique({
+      where: { threadId_userId: { threadId, userId: user.userId } },
+    });
+
+    if (existing) {
+      const [, updated] = await this.prisma.$transaction([
+        this.prisma.forumThreadLike.delete({ where: { id: existing.id } }),
+        this.prisma.forumThread.update({
+          where: { id: threadId },
+          data: { likeCount: { decrement: 1 } },
+        }),
+      ]);
+      return { liked: false, likeCount: updated.likeCount };
+    }
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.forumThreadLike.create({
+        data: { threadId, userId: user.userId },
+      }),
+      this.prisma.forumThread.update({
+        where: { id: threadId },
+        data: { likeCount: { increment: 1 } },
+      }),
+    ]);
+    return { liked: true, likeCount: updated.likeCount };
   }
 }
