@@ -26,6 +26,26 @@ export class BlogsService {
 
   // ── Public ──────────────────────────────────────────────────────────────
 
+  // Decodes the stored `data:image/...;base64,...` featuredImage into raw
+  // bytes so social-media crawlers (which can't render data: URIs) get a
+  // real fetchable og:image URL.
+  async getOgImage(slug: string) {
+    const post = await this.prisma.blog.findUnique({
+      where: { slug },
+      select: { status: true, featuredImage: true },
+    });
+    if (!post || post.status !== BlogStatus.PUBLISHED || !post.featuredImage) {
+      throw new NotFoundException('No featured image for this post.');
+    }
+
+    const match = /^data:(image\/[a-zA-Z+.-]+);base64,(.+)$/.exec(
+      post.featuredImage,
+    );
+    if (!match) throw new NotFoundException('No featured image for this post.');
+
+    return { contentType: match[1], buffer: Buffer.from(match[2], 'base64') };
+  }
+
   async list(query: {
     search?: string;
     category?: string;

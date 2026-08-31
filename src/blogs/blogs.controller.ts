@@ -3,12 +3,15 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { BlogStatus, Role } from '@prisma/client';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -88,6 +91,16 @@ export class BlogsController {
   @Delete('admin/:id')
   remove(@Param('id') id: string) {
     return this.blogsService.remove(id);
+  }
+
+  // ── Public: og:image (real HTTP image for social-share crawlers) ───────
+
+  @Get(':slug/og-image')
+  @Header('Cache-Control', 'public, max-age=86400, immutable')
+  async ogImage(@Param('slug') slug: string, @Res() res: Response) {
+    const { contentType, buffer } = await this.blogsService.getOgImage(slug);
+    res.setHeader('Content-Type', contentType);
+    res.send(buffer);
   }
 
   // ── Public: single post (kept last — most generic :slug route) ─────────
