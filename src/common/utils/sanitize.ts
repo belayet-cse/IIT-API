@@ -51,6 +51,10 @@ export function sanitizeContent(html: string): string {
     },
     allowedStyles: { '*': ALLOWED_STYLE_VALUES },
     allowedSchemes: ['http', 'https', 'mailto'],
+    // Images inserted through the editor are embedded as base64 data: URIs
+    // (no upload backend is configured) — without this, sanitize-html strips
+    // the src entirely since data: isn't in the default allowedSchemes.
+    allowedSchemesByTag: { img: ['data', 'http', 'https'] },
     allowProtocolRelative: false,
   });
 }
