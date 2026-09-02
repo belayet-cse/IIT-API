@@ -54,7 +54,7 @@ export class BlogsService {
   }) {
     const page = query.page && query.page > 0 ? query.page : 1;
     const limit =
-      query.limit && query.limit > 0 ? Math.min(query.limit, 50) : 12;
+      query.limit && query.limit > 0 ? Math.min(query.limit, 50) : 10;
 
     const where: Prisma.BlogWhereInput = { status: BlogStatus.PUBLISHED };
     if (query.search) {
@@ -183,8 +183,11 @@ export class BlogsService {
     const posts = await this.prisma.blog.findMany({
       where,
       // Filtering to a single category surfaces the writer's chosen
-      // sequence; otherwise show the most recently touched posts first.
-      orderBy: query.category ? { sequence: 'asc' } : { createdAt: 'desc' },
+      // sequence; otherwise show the most recently published posts first
+      // (drafts, which have no publishedAt yet, fall back to newest-created).
+      orderBy: query.category
+        ? { sequence: 'asc' }
+        : [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       include: { author: { select: { name: true } } },
     });
 
@@ -194,6 +197,7 @@ export class BlogsService {
       slug: p.slug,
       featuredImage: p.featuredImage,
       category: p.category,
+      subCategory: p.subCategory,
       tags: p.tags,
       sequence: p.sequence,
       status: p.status,
@@ -226,7 +230,9 @@ export class BlogsService {
         featuredImage: dto.featuredImage,
         metaTitle: dto.metaTitle,
         metaDescription: dto.metaDescription,
+        metaKeywords: dto.metaKeywords,
         category: dto.category,
+        subCategory: dto.subCategory,
         tags: dto.tags ?? [],
         sequence,
         status,
@@ -270,7 +276,9 @@ export class BlogsService {
         featuredImage: dto.featuredImage,
         metaTitle: dto.metaTitle,
         metaDescription: dto.metaDescription,
+        metaKeywords: dto.metaKeywords,
         category: dto.category,
+        subCategory: dto.subCategory,
         tags: dto.tags,
         sequence,
         status: dto.status,
@@ -375,7 +383,9 @@ export class BlogsService {
       featuredImage: post.featuredImage,
       metaTitle: post.metaTitle,
       metaDescription: post.metaDescription,
+      metaKeywords: post.metaKeywords,
       category: post.category,
+      subCategory: post.subCategory,
       tags: post.tags,
       readingTime: post.readingTime,
       priceBdt: post.priceBdt,
@@ -403,7 +413,9 @@ export class BlogsService {
       featuredImage: post.featuredImage,
       metaTitle: post.metaTitle,
       metaDescription: post.metaDescription,
+      metaKeywords: post.metaKeywords,
       category: post.category,
+      subCategory: post.subCategory,
       tags: post.tags,
       readingTime: post.readingTime,
       priceBdt: post.priceBdt,

@@ -50,7 +50,15 @@ export class UpdateBlogDto {
 
   @IsOptional()
   @IsString()
+  metaKeywords?: string;
+
+  @IsOptional()
+  @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsString()
+  subCategory?: string;
 
   @IsOptional()
   @IsArray()
