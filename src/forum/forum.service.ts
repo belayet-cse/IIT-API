@@ -15,6 +15,19 @@ import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 export class ForumService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ── Public ──────────────────────────────────────────────────────────────
+
+  // Counts only — thread titles and content stay members-only. Powers the
+  // "new topics" badge on the public alumni page.
+  async stats() {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [newThisWeek, total] = await Promise.all([
+      this.prisma.forumThread.count({ where: { createdAt: { gte: since } } }),
+      this.prisma.forumThread.count(),
+    ]);
+    return { newThisWeek, total };
+  }
+
   // ── Members ─────────────────────────────────────────────────────────────
 
   async list(

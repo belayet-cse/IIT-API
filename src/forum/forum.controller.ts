@@ -24,6 +24,13 @@ import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 export class ForumController {
   constructor(private readonly forumService: ForumService) {}
 
+  // ── Public ──────────────────────────────────────────────────────────────
+
+  @Get('stats')
+  stats() {
+    return this.forumService.stats();
+  }
+
   // ── Members (Premium + Alumni + Admin only) ────────────────────────────
 
   @UseGuards(JwtAuthGuard, RolesGuard)
