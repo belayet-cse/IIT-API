@@ -37,7 +37,11 @@ require("dotenv/config");
 const client_1 = require("@prisma/client");
 const adapter_pg_1 = require("@prisma/adapter-pg");
 const argon2 = __importStar(require("argon2"));
-const prisma = new client_1.PrismaClient({ adapter: new adapter_pg_1.PrismaPg(process.env.DATABASE_URL) });
+const blogs_1 = require("./seed-data/blogs");
+const slugify_1 = require("../common/utils/slugify");
+const prisma = new client_1.PrismaClient({
+    adapter: new adapter_pg_1.PrismaPg(process.env.DATABASE_URL),
+});
 async function main() {
     const adminPasswordHash = await argon2.hash('Admin@1234');
     const admin = await prisma.user.upsert({
@@ -89,7 +93,7 @@ async function main() {
             name: 'Tasnim Rahman',
             email: 'pending@iit-test.com',
             passwordHash: pendingPasswordHash,
-            role: 'USER',
+            role: 'GENERAL',
             emailVerified: true,
         },
     });
@@ -114,6 +118,40 @@ async function main() {
         update: {},
         create: { id: 'default' },
     });
+    const defaultCategories = ['UCP', 'DIGITAL TRADE', 'ISBP', 'URR 725'];
+    for (let i = 0; i < defaultCategories.length; i++) {
+        await prisma.category.upsert({
+            where: { name: defaultCategories[i] },
+            update: {},
+            create: { name: defaultCategories[i], sortOrder: i },
+        });
+    }
+    console.log(`Seeded ${defaultCategories.length} categories`);
+    for (const post of blogs_1.blogsSeedData) {
+        await prisma.blog.upsert({
+            where: { slug: post.slug },
+            update: {
+                title: post.title,
+                category: post.category,
+                readingTime: post.readingTime,
+                publishedAt: new Date(post.publishedAt),
+                content: post.content,
+                excerpt: (0, slugify_1.excerptFrom)(post.content),
+            },
+            create: {
+                title: post.title,
+                slug: post.slug,
+                category: post.category,
+                readingTime: post.readingTime,
+                publishedAt: new Date(post.publishedAt),
+                content: post.content,
+                excerpt: (0, slugify_1.excerptFrom)(post.content),
+                status: 'PUBLISHED',
+                authorId: admin.id,
+            },
+        });
+    }
+    console.log(`Seeded ${blogs_1.blogsSeedData.length} blog posts`);
 }
 main()
     .catch((error) => {

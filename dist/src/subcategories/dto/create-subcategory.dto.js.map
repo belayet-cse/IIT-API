@@ -1,0 +1,1 @@
+{"version":3,"file":"create-subcategory.dto.js","sourceRoot":"","sources":["../../../../src/subcategories/dto/create-subcategory.dto.ts"],"names":[],"mappings":";;;;;;;;;;;;AAAA,qDAAsD;AAEtD,MAAa,oBAAoB;IAG/B,IAAI,CAAS;IAIb,UAAU,CAAS;CACpB;AARD,oDAQC;AALC;IAFC,IAAA,0BAAQ,GAAE;IACV,IAAA,2BAAS,EAAC,CAAC,CAAC;;kDACA;AAIb;IAFC,IAAA,0BAAQ,GAAE;IACV,IAAA,2BAAS,EAAC,CAAC,CAAC;;wDACM"}

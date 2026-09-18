@@ -10,11 +10,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RegisterDto = void 0;
+const client_1 = require("@prisma/client");
 const class_validator_1 = require("class-validator");
 class RegisterDto {
     name;
     email;
     password;
+    phone;
+    organization;
+    registrationType;
+    membershipTier;
 }
 exports.RegisterDto = RegisterDto;
 __decorate([
@@ -31,4 +36,24 @@ __decorate([
     (0, class_validator_1.MinLength)(8),
     __metadata("design:type", String)
 ], RegisterDto.prototype, "password", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "phone", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "organization", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['GENERAL', 'PREMIUM', 'ALUMNI']),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "registrationType", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((dto) => dto.registrationType === 'PREMIUM'),
+    (0, class_validator_1.IsEnum)(client_1.MembershipTier),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "membershipTier", void 0);
 //# sourceMappingURL=register.dto.js.map

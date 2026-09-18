@@ -60,24 +60,53 @@ let AuthService = class AuthService {
         this.emailService = emailService;
     }
     signToken(user) {
-        return this.jwtService.sign({ sub: user.id, email: user.email, role: user.role });
+        return this.jwtService.sign({
+            sub: user.id,
+            email: user.email,
+            role: user.role,
+        });
     }
     toSafeUser(user) {
-        return { id: user.id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified };
+        return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            emailVerified: user.emailVerified,
+            phone: user.phone ?? null,
+            address: user.address ?? null,
+            organization: user.organization ?? null,
+            mustChangePassword: user.mustChangePassword,
+            alumniVerificationStatus: user.alumniVerificationStatus,
+            desiredMembershipTier: user.desiredMembershipTier ?? null,
+            membershipTier: user.membershipTier ?? null,
+        };
     }
     async register(dto) {
-        const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+        const existing = await this.prisma.user.findUnique({
+            where: { email: dto.email },
+        });
         if (existing) {
             throw new common_1.ConflictException('An account with this email already exists.');
         }
         const passwordHash = await argon2.hash(dto.password);
         const user = await this.prisma.user.create({
-            data: { name: dto.name, email: dto.email, passwordHash },
+            data: {
+                name: dto.name,
+                email: dto.email,
+                passwordHash,
+                phone: dto.phone,
+                organization: dto.organization,
+                desiredMembershipTier: dto.registrationType === 'PREMIUM' ? dto.membershipTier : undefined,
+                alumniVerificationStatus: dto.registrationType === 'ALUMNI' ? 'PENDING' : 'NONE',
+            },
         });
         return { accessToken: this.signToken(user), user: this.toSafeUser(user) };
     }
     async login(dto) {
-        const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+        const user = await this.prisma.user.findUnique({
+            where: { email: dto.email },
+        });
         if (!user) {
             throw new common_1.UnauthorizedException('Invalid email or password.');
         }
@@ -96,6 +125,27 @@ let AuthService = class AuthService {
             throw new common_1.UnauthorizedException();
         }
         return { ...this.toSafeUser(user), alumniProfile: user.alumniProfile };
+    }
+    async updateProfile(userId, dto) {
+        const user = await this.prisma.user.update({
+            where: { id: userId },
+            data: { name: dto.name, phone: dto.phone, address: dto.address, organization: dto.organization },
+        });
+        return this.toSafeUser(user);
+    }
+    async changePassword(userId, dto) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user)
+            throw new common_1.UnauthorizedException();
+        const valid = await argon2.verify(user.passwordHash, dto.currentPassword);
+        if (!valid)
+            throw new common_1.UnauthorizedException('Current password is incorrect.');
+        const passwordHash = await argon2.hash(dto.newPassword);
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { passwordHash, mustChangePassword: false },
+        });
+        return { success: true };
     }
     async forgotPassword(email) {
         const user = await this.prisma.user.findUnique({ where: { email } });
@@ -116,14 +166,22 @@ let AuthService = class AuthService {
     }
     async resetPassword(dto) {
         const tokenHash = (0, crypto_1.createHash)('sha256').update(dto.token).digest('hex');
-        const resetToken = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+        const resetToken = await this.prisma.passwordResetToken.findUnique({
+            where: { tokenHash },
+        });
         if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
             throw new common_1.UnauthorizedException('This reset link is invalid or has expired.');
         }
         const passwordHash = await argon2.hash(dto.password);
         await this.prisma.$transaction([
-            this.prisma.user.update({ where: { id: resetToken.userId }, data: { passwordHash } }),
-            this.prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
+            this.prisma.user.update({
+                where: { id: resetToken.userId },
+                data: { passwordHash },
+            }),
+            this.prisma.passwordResetToken.update({
+                where: { id: resetToken.id },
+                data: { usedAt: new Date() },
+            }),
         ]);
         return { success: true };
     }

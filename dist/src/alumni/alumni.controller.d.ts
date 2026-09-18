@@ -22,14 +22,14 @@ export declare class AlumniController {
         org: string;
     }[]>;
     createApplication(dto: CreateApplicationDto, file?: Express.Multer.File): Promise<{
-        id: string;
         email: string;
         phone: string;
+        organization: string;
+        id: string;
+        createdAt: Date;
         linkedin: string | null;
         designation: string;
-        organization: string;
         certification: import("@prisma/client").$Enums.Certification;
-        createdAt: Date;
         fullName: string;
         yearsExperience: string | null;
         careerStage: string | null;
@@ -72,15 +72,17 @@ export declare class AlumniController {
         status: import("@prisma/client").$Enums.ApplicationStatus;
     }[]>;
     approveApplication(id: string, user: AuthenticatedUser): Promise<{
-        id: string;
-        userId: string | null;
-        applicationId: string | null;
         name: string;
         email: string;
         phone: string | null;
+        organization: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string | null;
+        applicationId: string | null;
         linkedin: string | null;
         designation: string;
-        organization: string;
         country: string | null;
         batch: string | null;
         certification: import("@prisma/client").$Enums.Certification | null;
@@ -92,18 +94,16 @@ export declare class AlumniController {
         freeCertifications: string;
         blogAccess: boolean;
         forumAccess: boolean;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     rejectApplication(id: string, dto: RejectApplicationDto, user: AuthenticatedUser): Promise<{
-        id: string;
         email: string;
         phone: string;
+        organization: string;
+        id: string;
+        createdAt: Date;
         linkedin: string | null;
         designation: string;
-        organization: string;
         certification: import("@prisma/client").$Enums.Certification;
-        createdAt: Date;
         fullName: string;
         yearsExperience: string | null;
         careerStage: string | null;
@@ -127,15 +127,17 @@ export declare class AlumniController {
         status: "verified";
     }[]>;
     createHonorary(dto: CreateHonoraryDto, file?: Express.Multer.File): Promise<{
-        id: string;
-        userId: string | null;
-        applicationId: string | null;
         name: string;
         email: string;
         phone: string | null;
+        organization: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string | null;
+        applicationId: string | null;
         linkedin: string | null;
         designation: string;
-        organization: string;
         country: string | null;
         batch: string | null;
         certification: import("@prisma/client").$Enums.Certification | null;
@@ -147,19 +149,17 @@ export declare class AlumniController {
         freeCertifications: string;
         blogAccess: boolean;
         forumAccess: boolean;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     getDefaults(): Promise<{
         id: string;
-        certDiscountPercent: number;
         updatedAt: Date;
+        certDiscountPercent: number;
         blogDiscountPercent: number;
     }>;
     updateDefaults(dto: UpdateDefaultsDto): Promise<{
         id: string;
-        certDiscountPercent: number;
         updatedAt: Date;
+        certDiscountPercent: number;
         blogDiscountPercent: number;
     }>;
     privilegesList(search?: string): Promise<{
@@ -174,15 +174,17 @@ export declare class AlumniController {
         forumAccess: boolean;
     }[]>;
     updatePrivileges(id: string, dto: UpdatePrivilegesDto): Promise<{
-        id: string;
-        userId: string | null;
-        applicationId: string | null;
         name: string;
         email: string;
         phone: string | null;
+        organization: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string | null;
+        applicationId: string | null;
         linkedin: string | null;
         designation: string;
-        organization: string;
         country: string | null;
         batch: string | null;
         certification: import("@prisma/client").$Enums.Certification | null;
@@ -194,19 +196,19 @@ export declare class AlumniController {
         freeCertifications: string;
         blogAccess: boolean;
         forumAccess: boolean;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     updateAlumni(id: string, dto: UpdateAlumniDto): Promise<{
-        id: string;
-        userId: string | null;
-        applicationId: string | null;
         name: string;
         email: string;
         phone: string | null;
+        organization: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string | null;
+        applicationId: string | null;
         linkedin: string | null;
         designation: string;
-        organization: string;
         country: string | null;
         batch: string | null;
         certification: import("@prisma/client").$Enums.Certification | null;
@@ -218,7 +220,5 @@ export declare class AlumniController {
         freeCertifications: string;
         blogAccess: boolean;
         forumAccess: boolean;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
 }
