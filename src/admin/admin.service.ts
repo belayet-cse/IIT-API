@@ -3,8 +3,9 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../email/email.service';
 import { generateTempPassword } from '../common/utils/temp-password';
-import { parseCsvNameEmail } from '../common/utils/csv';
+import { parseCsvNameEmail, parseCsvAlumniImport } from '../common/utils/csv';
 import { ConfirmGoLiveDto } from './dto/confirm-go-live.dto';
+import { ConfirmAlumniBulkImportDto } from './dto/confirm-alumni-bulk-import.dto';
 
 @Injectable()
 export class AdminService {
@@ -124,19 +125,110 @@ export class AdminService {
           });
         } catch {
           // Already exists (race with another confirm call, or created since preview) — skip.
-          return { email: entry.email, sent: false };
+          return { email: entry.email, created: false };
         }
-        await this.emailService.sendWelcomeCredentialsEmail(entry.email, {
-          tempPassword,
-          roleLabel: 'General Member',
-        });
-        return { email: entry.email, sent: true };
+        if (dto.sendWelcomeEmail) {
+          await this.emailService.sendWelcomeCredentialsEmail(entry.email, {
+            tempPassword,
+            roleLabel: 'General Member',
+          });
+        }
+        return { email: entry.email, created: true };
       }),
     );
 
     return {
-      created: results.filter((r) => r.sent).length,
-      skipped: results.filter((r) => !r.sent).length,
+      created: results.filter((r) => r.created).length,
+      skipped: results.filter((r) => !r.created).length,
+    };
+  }
+
+  // ── Alumni bulk import (brand-new accounts + profiles from a legacy list) ─
+
+  async previewAlumniBulkImport(csvText: string) {
+    const rows = parseCsvAlumniImport(csvText);
+    const existing = await this.prisma.alumniProfile.findMany({
+      where: { email: { in: rows.map((r) => r.email) } },
+      select: { email: true },
+    });
+    const existingEmails = new Set(existing.map((p) => p.email.toLowerCase()));
+
+    return {
+      newEntries: rows.filter((r) => !existingEmails.has(r.email.toLowerCase())),
+      alreadyExistsEmails: rows
+        .filter((r) => existingEmails.has(r.email.toLowerCase()))
+        .map((r) => r.email),
+    };
+  }
+
+  async confirmAlumniBulkImport(dto: ConfirmAlumniBulkImportDto) {
+    const results = await Promise.all(
+      dto.entries.map((entry) =>
+        this.prisma
+          .$transaction(async (tx) => {
+            const linkedUser = await tx.user.findUnique({ where: { email: entry.email } });
+            let userId = linkedUser?.id;
+            let tempPassword: string | undefined;
+
+            if (!linkedUser) {
+              tempPassword = generateTempPassword();
+              const passwordHash = await argon2.hash(tempPassword);
+              const created = await tx.user.create({
+                data: {
+                  name: entry.name,
+                  email: entry.email,
+                  passwordHash,
+                  role: 'ALUMNI',
+                  mustChangePassword: true,
+                  emailVerified: true,
+                },
+              });
+              userId = created.id;
+            } else if (linkedUser.role !== 'ADMIN' && linkedUser.role !== 'RESEARCHER') {
+              await tx.user.update({ where: { id: linkedUser.id }, data: { role: 'ALUMNI' } });
+            }
+
+            await tx.alumniProfile.create({
+              data: {
+                userId,
+                name: entry.name,
+                email: entry.email,
+                phone: entry.phone,
+                linkedin: entry.linkedin,
+                // Not all import sources carry these — the column is NOT
+                // NULL, so fall back to empty string rather than omit.
+                // Admin fills these in later via the alumni edit UI.
+                designation: entry.designation ?? '',
+                organization: entry.organization ?? '',
+                certification: entry.certification,
+                batch: entry.batch,
+                country: entry.country,
+                type: 'AUTOMATIC',
+              },
+            });
+
+            return { email: entry.email, tempPassword, failed: false as const };
+          })
+          .catch(() => ({ email: entry.email, tempPassword: undefined, failed: true as const })),
+      ),
+    );
+
+    if (dto.sendWelcomeEmail) {
+      await Promise.all(
+        results
+          .filter((r) => !r.failed && r.tempPassword)
+          .map((r) =>
+            this.emailService.sendWelcomeCredentialsEmail(r.email, {
+              tempPassword: r.tempPassword as string,
+              roleLabel: 'Alumni Member',
+            }),
+          ),
+      );
+    }
+
+    return {
+      created: results.filter((r) => !r.failed).length,
+      failed: results.filter((r) => r.failed).length,
     };
   }
 }

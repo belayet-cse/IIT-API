@@ -1,7 +1,9 @@
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEmail,
+  IsOptional,
   IsString,
   MinLength,
   ValidateNested,
@@ -23,4 +25,9 @@ export class ConfirmGoLiveDto {
   @ValidateNested({ each: true })
   @Type(() => GoLiveEntry)
   entries: GoLiveEntry[];
+
+  // Defaults to a silent import (no email) — the admin opts in per batch.
+  @IsOptional()
+  @IsBoolean()
+  sendWelcomeEmail?: boolean;
 }

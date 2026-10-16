@@ -13,6 +13,7 @@ import { memoryStorage } from 'multer';
 import { Role } from '@prisma/client';
 import { AdminService } from './admin.service';
 import { ConfirmGoLiveDto } from './dto/confirm-go-live.dto';
+import { ConfirmAlumniBulkImportDto } from './dto/confirm-alumni-bulk-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -54,5 +55,25 @@ export class AdminController {
   @Post('go-live/confirm')
   confirmGoLive(@Body() dto: ConfirmGoLiveDto) {
     return this.adminService.confirmGoLive(dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @Post('alumni-import/preview')
+  @UseInterceptors(FileInterceptor('file', CSV_UPLOAD_OPTIONS))
+  async previewAlumniBulkImport(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('CSV file is required.');
+    try {
+      return await this.adminService.previewAlumniBulkImport(file.buffer.toString('utf-8'));
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Failed to parse CSV.');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @Post('alumni-import/confirm')
+  confirmAlumniBulkImport(@Body() dto: ConfirmAlumniBulkImportDto) {
+    return this.adminService.confirmAlumniBulkImport(dto);
   }
 }

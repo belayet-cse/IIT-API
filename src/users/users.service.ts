@@ -121,10 +121,38 @@ export class UsersService {
     if (dto.matchedEmails.length > 0) {
       // Re-check role at confirm time too — never let this path touch
       // ADMIN/RESEARCHER accounts, even if the client-echoed list did.
-      await this.prisma.user.updateMany({
+      const promoted = await this.prisma.user.findMany({
         where: { email: { in: dto.matchedEmails }, role: { in: ['GENERAL', 'PREMIUM'] } },
+        select: { id: true, name: true, email: true },
+      });
+
+      await this.prisma.user.updateMany({
+        where: { id: { in: promoted.map((u) => u.id) } },
         data: { role: 'ALUMNI', alumniVerificationStatus: 'VERIFIED' },
       });
+
+      // This CSV format is email-only, so there's no designation/organization
+      // to carry over — an AlumniProfile is still required for the person to
+      // show up in the public directory at all (it reads only from
+      // AlumniProfile, not User). Admin can fill the rest in later via the
+      // alumni edit UI. Upsert so re-running against an overlapping CSV
+      // doesn't create duplicates.
+      await Promise.all(
+        promoted.map((user) =>
+          this.prisma.alumniProfile.upsert({
+            where: { email: user.email },
+            update: { userId: user.id },
+            create: {
+              userId: user.id,
+              name: user.name,
+              email: user.email,
+              designation: '',
+              organization: '',
+              type: 'AUTOMATIC',
+            },
+          }),
+        ),
+      );
     }
 
     await Promise.all([

@@ -1,7 +1,9 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ApplicationStatus, Certification, Prisma } from '@prisma/client';
+import * as argon2 from 'argon2';
 import { PrismaService } from '../database/prisma.service';
 import { initialsFromName } from '../common/utils/initials';
+import { generateTempPassword } from '../common/utils/temp-password';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { CreateHonoraryDto } from './dto/create-honorary.dto';
 import { UpdateAlumniDto } from './dto/update-alumni.dto';
@@ -124,11 +126,39 @@ export class AlumniService {
 
     const linkedUser = await this.prisma.user.findUnique({ where: { email: application.email } });
 
-    const [profile] = await this.prisma.$transaction([
-      this.prisma.alumniProfile.create({
+    // Array-form $transaction can't let a later item depend on an id produced
+    // by an earlier one, so when there's no existing account to link, the
+    // interactive (callback) form is required here to create the User and
+    // then use its id for the AlumniProfile in the same transaction. Without
+    // this, an approved applicant who never separately registered would have
+    // no way to ever log in — the real gap this fixes. No welcome email is
+    // sent (matches the product decision for bulk imports to stay silent);
+    // the person activates via the existing /forgot-password flow.
+    const profile = await this.prisma.$transaction(async (tx) => {
+      let userId = linkedUser?.id;
+
+      if (!linkedUser) {
+        const tempPassword = generateTempPassword();
+        const passwordHash = await argon2.hash(tempPassword);
+        const created = await tx.user.create({
+          data: {
+            name: application.fullName,
+            email: application.email,
+            passwordHash,
+            role: 'ALUMNI',
+            mustChangePassword: true,
+            emailVerified: true,
+          },
+        });
+        userId = created.id;
+      } else if (linkedUser.role !== 'ADMIN' && linkedUser.role !== 'RESEARCHER') {
+        await tx.user.update({ where: { id: linkedUser.id }, data: { role: 'ALUMNI' } });
+      }
+
+      const createdProfile = await tx.alumniProfile.create({
         data: {
           applicationId: application.id,
-          userId: linkedUser?.id,
+          userId,
           name: application.fullName,
           email: application.email,
           phone: application.phone,
@@ -139,15 +169,15 @@ export class AlumniService {
           batch: application.yearCompleted,
           type: 'AUTOMATIC',
         },
-      }),
-      this.prisma.alumniApplication.update({
+      });
+
+      await tx.alumniApplication.update({
         where: { id },
         data: { status: ApplicationStatus.APPROVED, reviewedAt: new Date(), reviewedByUserId: adminUserId },
-      }),
-      ...(linkedUser
-        ? [this.prisma.user.update({ where: { id: linkedUser.id }, data: { role: 'ALUMNI' as const } })]
-        : []),
-    ]);
+      });
+
+      return createdProfile;
+    });
 
     return profile;
   }
