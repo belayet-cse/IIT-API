@@ -149,9 +149,13 @@ export class AdminService {
     const rows = parseCsvAlumniImport(csvText);
     const existing = await this.prisma.alumniProfile.findMany({
       where: { email: { in: rows.map((r) => r.email) } },
-      select: { email: true },
+      select: { email: true, userId: true },
     });
-    const existingEmails = new Set(existing.map((p) => p.email.toLowerCase()));
+    // A profile with no linked login account is an incomplete import, not
+    // "already exists" — leave it in newEntries so confirm can link it.
+    const existingEmails = new Set(
+      existing.filter((p) => p.userId).map((p) => p.email.toLowerCase()),
+    );
 
     return {
       newEntries: rows.filter((r) => !existingEmails.has(r.email.toLowerCase())),
@@ -186,6 +190,18 @@ export class AdminService {
               userId = created.id;
             } else if (linkedUser.role !== 'ADMIN' && linkedUser.role !== 'RESEARCHER') {
               await tx.user.update({ where: { id: linkedUser.id }, data: { role: 'ALUMNI' } });
+            }
+
+            const orphanProfile = await tx.alumniProfile.findUnique({
+              where: { email: entry.email },
+            });
+            if (orphanProfile?.userId) throw new Error('Profile already linked.');
+            if (orphanProfile) {
+              await tx.alumniProfile.update({
+                where: { id: orphanProfile.id },
+                data: { userId },
+              });
+              return { email: entry.email, tempPassword, failed: false as const };
             }
 
             await tx.alumniProfile.create({
