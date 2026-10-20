@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -13,6 +14,10 @@ import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+
+// Members migrated from the old iitrade.org site still have bcrypt hashes; they
+// are verified as-is and upgraded to argon2 on their next successful login.
+const isLegacyBcrypt = (hash: string) => /^\$2[aby]\$/.test(hash);
 
 const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -62,6 +67,10 @@ export class AuthService {
     };
   }
 
+  private verifyPassword(hash: string, plain: string): Promise<boolean> {
+    return isLegacyBcrypt(hash) ? bcrypt.compare(plain, hash) : argon2.verify(hash, plain);
+  }
+
   async register(dto: RegisterDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -92,16 +101,23 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: dto.email.trim(), mode: 'insensitive' } },
     });
     if (!user) {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
-    const valid = await argon2.verify(user.passwordHash, dto.password);
+    const valid = await this.verifyPassword(user.passwordHash, dto.password);
     if (!valid) {
       throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    if (isLegacyBcrypt(user.passwordHash)) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: await argon2.hash(dto.password) },
+      });
     }
 
     return { accessToken: this.signToken(user), user: this.toSafeUser(user) };
@@ -130,7 +146,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
 
-    const valid = await argon2.verify(user.passwordHash, dto.currentPassword);
+    const valid = await this.verifyPassword(user.passwordHash, dto.currentPassword);
     if (!valid)
       throw new UnauthorizedException('Current password is incorrect.');
 
@@ -143,7 +159,9 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
+    });
     // Always resolve successfully so we don't leak which emails are registered.
     if (!user) return { success: true };
 
