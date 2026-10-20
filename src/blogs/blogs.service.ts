@@ -239,7 +239,12 @@ export class BlogsService {
         priceBdt: dto.priceBdt ?? 0,
         priceUsd: dto.priceUsd ?? 0,
         readingTime: dto.readingTime ?? estimateReadingTime(content),
-        publishedAt: status === BlogStatus.PUBLISHED ? new Date() : null,
+        publishedAt:
+          status === BlogStatus.PUBLISHED
+            ? dto.publishedAt
+              ? new Date(dto.publishedAt)
+              : new Date()
+            : null,
         authorId,
       },
     });
@@ -287,7 +292,11 @@ export class BlogsService {
         readingTime:
           dto.readingTime ??
           (content ? estimateReadingTime(content) : undefined),
-        publishedAt: becomingPublished ? new Date() : undefined,
+        publishedAt: dto.publishedAt
+          ? new Date(dto.publishedAt)
+          : becomingPublished
+            ? new Date()
+            : undefined,
       },
     });
   }

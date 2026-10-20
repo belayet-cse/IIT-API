@@ -1,6 +1,7 @@
 import { BlogStatus } from '@prisma/client';
 import {
   IsArray,
+  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -88,4 +89,8 @@ export class UpdateBlogDto {
   @IsInt()
   @Min(0)
   sequence?: number;
+
+  @IsOptional()
+  @IsDateString()
+  publishedAt?: string;
 }
