@@ -67,31 +67,110 @@ export class EmailService {
     });
   }
 
+  // Credentials emails (member upgrade + approved alumni) share one layout:
+  // website, user ID, temporary password, and the forced-change notice.
+  private credentialsEmail(
+    intro: string[],
+    to: string,
+    tempPassword: string,
+  ): { html: string; text: string } {
+    const site = process.env.WEB_APP_URL ?? 'https://iitrade.org';
+    const html = `
+      <p>Dear iitrade Member,</p>
+      <p>Greetings from iitrade.org!</p>
+      ${intro.map((p) => `<p>${escapeHtml(p)}</p>`).join('')}
+      <p><strong>Website:</strong> <a href="${site}">${site}</a><br />
+      <strong>User ID:</strong> ${escapeHtml(to)}<br />
+      <strong>Temporary Password:</strong> ${escapeHtml(tempPassword)}</p>
+      <p><strong>Action Required: Change Your Password</strong><br />
+      For security reasons, please log in using the above credentials and change your password
+      immediately upon your first login. You will be asked to choose a new, strong password
+      (at least 8 characters with an uppercase letter, a lowercase letter, a number and a special character).</p>
+      <p>We are continuously working to make iitrade.org a more engaging and valuable platform for
+      international trade professionals. Your suggestions, ideas, and feedback are always welcome as we
+      continue improving the platform around your needs.</p>
+      <p><em>Your ideas. Your experience. Your iitrade.</em></p>
+      <p>Thank you for being part of our community.</p>
+      <p>Best regards,<br />Team iitrade<br /><a href="${site}">${site}</a></p>
+    `;
+    const text = [
+      'Dear iitrade Member,',
+      '',
+      'Greetings from iitrade.org!',
+      '',
+      ...intro.flatMap((p) => [p, '']),
+      `Website: ${site}`,
+      `User ID: ${to}`,
+      `Temporary Password: ${tempPassword}`,
+      '',
+      'Action Required: Change Your Password',
+      'For security reasons, please log in using the above credentials and change your password immediately upon your first login. You will be asked to choose a new, strong password (at least 8 characters with an uppercase letter, a lowercase letter, a number and a special character).',
+      '',
+      'We are continuously working to make iitrade.org a more engaging and valuable platform for international trade professionals. Your suggestions, ideas, and feedback are always welcome as we continue improving the platform around your needs.',
+      '',
+      'Your ideas. Your experience. Your iitrade.',
+      '',
+      'Thank you for being part of our community.',
+      '',
+      'Best regards,',
+      'Team iitrade',
+      site,
+    ].join('\n');
+    return { html, text };
+  }
+
+  async sendMemberUpgradeEmail(to: string, tempPassword: string): Promise<void> {
+    const { html, text } = this.credentialsEmail(
+      [
+        'We are pleased to inform you that iitrade.org has recently undergone a major upgrade, along with improvements to its design, functionality, and overall user experience.',
+        'As part of this upgrade, your user account has been configured in our updated system. Please find your login credentials below:',
+      ],
+      to,
+      tempPassword,
+    );
+    if (!this.resend) {
+      this.logger.log(`[dev email] Member upgrade credentials for ${to}`);
+      return;
+    }
+    const { error } = await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject: 'iitrade.org has been upgraded - your new login details',
+      html,
+      text,
+    });
+    if (error) throw new Error(error.message);
+  }
+
   async sendWelcomeCredentialsEmail(
     to: string,
     details: { tempPassword: string; roleLabel: string },
   ): Promise<void> {
-    const loginUrl = `${process.env.WEB_APP_URL}/login`;
-    const html = `
-      <p>Your ${escapeHtml(details.roleLabel)} account is ready.</p>
-      <p><strong>Login email:</strong> ${escapeHtml(to)}</p>
-      <p><strong>Temporary password:</strong> ${escapeHtml(details.tempPassword)}</p>
-      <p>Sign in at <a href="${loginUrl}">${loginUrl}</a> — you'll be asked to set your own
-      password on first login.</p>
-    `;
+    const alumni = /alumni/i.test(details.roleLabel);
+    const { html, text } = this.credentialsEmail(
+      [
+        alumni
+          ? 'Your iitrade.org alumni registration has been approved. Your alumni account is ready, with your login credentials below:'
+          : `Your ${details.roleLabel} account is ready. Please find your login credentials below:`,
+      ],
+      to,
+      details.tempPassword,
+    );
 
     if (!this.resend) {
-      this.logger.log(
-        `[dev email] Welcome credentials for ${to}: ${details.tempPassword}`,
-      );
+      this.logger.log(`[dev email] Welcome credentials for ${to}`);
       return;
     }
-    await this.resend.emails.send({
+    const { error } = await this.resend.emails.send({
       from: this.from,
       to,
-      subject: `Welcome to IIT — your ${details.roleLabel} account is ready`,
+      subject: alumni
+        ? 'Your iitrade.org alumni registration is approved - login details'
+        : `Welcome to iitrade.org - your ${details.roleLabel} account is ready`,
       html,
+      text,
     });
+    if (error) throw new Error(error.message);
   }
 
   async sendResearcherApprovedEmail(to: string): Promise<void> {

@@ -1,3 +1,4 @@
+import { StrongPassword } from '../../common/validators/strong-password';
 import { MembershipTier } from '@prisma/client';
 import { IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
@@ -11,8 +12,7 @@ export class RegisterDto {
   @IsEmail()
   email: string;
 
-  @IsString()
-  @MinLength(8)
+  @StrongPassword()
   password: string;
 
   @IsOptional()

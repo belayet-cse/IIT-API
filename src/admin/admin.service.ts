@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../email/email.service';
 import { generateTempPassword } from '../common/utils/temp-password';
 import { parseCsvNameEmail, parseCsvAlumniImport } from '../common/utils/csv';
+import { MemberUpgradeEmailDto } from './dto/member-upgrade-email.dto';
 import { ConfirmGoLiveDto } from './dto/confirm-go-live.dto';
 import { ConfirmAlumniBulkImportDto } from './dto/confirm-alumni-bulk-import.dto';
 
@@ -128,10 +129,9 @@ export class AdminService {
           return { email: entry.email, created: false };
         }
         if (dto.sendWelcomeEmail) {
-          await this.emailService.sendWelcomeCredentialsEmail(entry.email, {
-            tempPassword,
-            roleLabel: 'General Member',
-          });
+          await this.emailService
+            .sendWelcomeCredentialsEmail(entry.email, { tempPassword, roleLabel: 'General Member' })
+            .catch(() => undefined);
         }
         return { email: entry.email, created: true };
       }),
@@ -234,10 +234,12 @@ export class AdminService {
         results
           .filter((r) => !r.failed && r.tempPassword)
           .map((r) =>
-            this.emailService.sendWelcomeCredentialsEmail(r.email, {
-              tempPassword: r.tempPassword as string,
-              roleLabel: 'Alumni Member',
-            }),
+            this.emailService
+              .sendWelcomeCredentialsEmail(r.email, {
+                tempPassword: r.tempPassword as string,
+                roleLabel: 'Alumni Member',
+              })
+              .catch(() => undefined),
           ),
       );
     }
@@ -246,5 +248,46 @@ export class AdminService {
       created: results.filter((r) => !r.failed).length,
       failed: results.filter((r) => r.failed).length,
     };
+  }
+
+  // One-time "your account was upgraded" mail for members migrated from the
+  // old site. Each member gets their own random temporary password (never a
+  // shared one), and must change it at first login. If the mail cannot be
+  // sent, the previous password is restored so nobody is locked out.
+  async sendMemberUpgradeEmails(dto: MemberUpgradeEmailDto) {
+    const wanted = [...new Set(dto.emails.map((e) => e.trim().toLowerCase()))];
+    const users = await this.prisma.user.findMany({
+      where: { role: 'GENERAL', email: { in: wanted, mode: 'insensitive' } },
+      select: { id: true, email: true, passwordHash: true },
+    });
+    const eligibleKeys = new Set(users.map((u) => u.email.toLowerCase()));
+    const notEligible = wanted.filter((e) => !eligibleKeys.has(e));
+
+    if (dto.dryRun) {
+      return { requested: wanted.length, eligible: users.length, notEligible: notEligible.length, sent: 0, failed: 0, failedEmails: [] as string[] };
+    }
+
+    let sent = 0;
+    const failedEmails: string[] = [];
+    for (const user of users) {
+      const tempPassword = generateTempPassword();
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: await argon2.hash(tempPassword), mustChangePassword: true },
+      });
+      try {
+        await this.emailService.sendMemberUpgradeEmail(user.email, tempPassword);
+        sent++;
+      } catch {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash: user.passwordHash, mustChangePassword: false },
+        });
+        failedEmails.push(user.email);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+
+    return { requested: wanted.length, eligible: users.length, notEligible: notEligible.length, sent, failed: failedEmails.length, failedEmails };
   }
 }

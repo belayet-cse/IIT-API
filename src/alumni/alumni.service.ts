@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { ApplicationStatus, Certification, Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../database/prisma.service';
+import { EmailService } from '../email/email.service';
 import { initialsFromName } from '../common/utils/initials';
 import { generateTempPassword } from '../common/utils/temp-password';
 import { CreateApplicationDto } from './dto/create-application.dto';
@@ -14,7 +15,10 @@ const DEFAULTS_ID = 'default';
 
 @Injectable()
 export class AlumniService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+  ) {}
 
   // ── Public ──────────────────────────────────────────────────────────────
 
@@ -124,21 +128,25 @@ export class AlumniService {
       throw new ConflictException('This application has already been reviewed.');
     }
 
-    const linkedUser = await this.prisma.user.findUnique({ where: { email: application.email } });
+    const linkedUser = await this.prisma.user.findFirst({
+      where: { email: { equals: application.email.trim(), mode: 'insensitive' } },
+    });
 
     // Array-form $transaction can't let a later item depend on an id produced
     // by an earlier one, so when there's no existing account to link, the
     // interactive (callback) form is required here to create the User and
     // then use its id for the AlumniProfile in the same transaction. Without
     // this, an approved applicant who never separately registered would have
-    // no way to ever log in — the real gap this fixes. No welcome email is
-    // sent (matches the product decision for bulk imports to stay silent);
-    // the person activates via the existing /forgot-password flow.
+    // no way to ever log in. A brand-new account gets a one-time temporary
+    // password that is emailed right after the transaction commits, and
+    // mustChangePassword forces them to choose their own on first login.
+    let newAccountTempPassword: string | undefined;
     const profile = await this.prisma.$transaction(async (tx) => {
       let userId = linkedUser?.id;
 
       if (!linkedUser) {
         const tempPassword = generateTempPassword();
+        newAccountTempPassword = tempPassword;
         const passwordHash = await argon2.hash(tempPassword);
         const created = await tx.user.create({
           data: {
@@ -178,6 +186,20 @@ export class AlumniService {
 
       return createdProfile;
     });
+
+    // Email only after the transaction succeeded; a mail failure must not undo the approval.
+    try {
+      if (newAccountTempPassword) {
+        await this.emailService.sendWelcomeCredentialsEmail(application.email, {
+          tempPassword: newAccountTempPassword,
+          roleLabel: 'Alumni Member',
+        });
+      } else {
+        await this.emailService.sendAlumniVerificationResultEmail(linkedUser?.email ?? application.email, true);
+      }
+    } catch {
+      // Admin can resend access via Forgot Password if delivery failed.
+    }
 
     return profile;
   }

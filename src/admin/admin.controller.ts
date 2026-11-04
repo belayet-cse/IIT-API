@@ -12,6 +12,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Role } from '@prisma/client';
 import { AdminService } from './admin.service';
+import { MemberUpgradeEmailDto } from './dto/member-upgrade-email.dto';
 import { ConfirmGoLiveDto } from './dto/confirm-go-live.dto';
 import { ConfirmAlumniBulkImportDto } from './dto/confirm-alumni-bulk-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -48,6 +49,13 @@ export class AdminController {
   previewGoLive(@UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('CSV file is required.');
     return this.adminService.previewGoLive(file.buffer.toString('utf-8'));
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @Post('members/upgrade-email')
+  sendMemberUpgradeEmails(@Body() dto: MemberUpgradeEmailDto) {
+    return this.adminService.sendMemberUpgradeEmails(dto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
